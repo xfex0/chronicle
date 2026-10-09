@@ -1,0 +1,29 @@
+# Formats all Rust code and commits the result — no Rust needed on your PC.
+# Actions tab → format → Run workflow. Afterwards, click "Fetch origin" / "Pull" in GitHub Desktop.
+name: format
+on: workflow_dispatch
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: rustfmt }
+      - name: cargo fmt
+        run: |
+          cd rust && cargo fmt --all
+          cd ../apps/chronicle/src-tauri && cargo fmt --all
+      - name: Commit if anything changed
+        run: |
+          if git diff --quiet; then
+            echo "Already formatted."
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898599+github-actions[bot]@users.noreply.github.com"
+            git commit -am "Format Rust code (cargo fmt)"
+            git push
+          fi
