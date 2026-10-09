@@ -1,0 +1,7 @@
+[package]
+name = "chronicle-rng"
+description = "Deterministic SplitMix64 streams keyed by (seed, stream name)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true

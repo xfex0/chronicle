@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mega-converter"
+version = "0.1.0"
+description = "Paradox Mega Campaign Converter — orchestration, rules, conversion, generation"
+requires-python = ">=3.12"
+dependencies = [
+  "PyYAML>=6",
+]
+
+[project.optional-dependencies]
+# Pydantic mirrors of the UWM (generated from the Rust JSON Schema).
+models = ["pydantic>=2.6"]
+# Rust core (built from rust/crates/python-bridge with `maturin develop`).
+core = ["paradox-core"]
+dev = ["pytest>=8", "pydantic>=2.6", "ruff", "mypy"]
+
+[project.scripts]
+mega-converter = "mega_converter.cli:main"
+
+
+[tool.setuptools.packages.find]
+include = ["mega_converter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.mypy]
+strict = true
+python_version = "3.12"
+
+[tool.setuptools.package-data]
+"mega_converter.database" = ["schema.sql"]

@@ -1,0 +1,18 @@
+[package]
+name = "chronicle-db"
+description = "SQLite storage: app database (settings, installs, campaign index) and per-campaign databases"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+chronicle-core.workspace = true
+rusqlite.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

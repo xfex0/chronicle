@@ -1,0 +1,25 @@
+# Balance lives here, not in code (ТЗ §9). Inputs are normalized UWM-derived metrics
+# prepared by each mapper — NOT game field names. Weights of a normalized formula sum to 1.
+version: 1
+
+ck3_to_eu4:
+  province_tax:
+    normalized: true
+    scale: 12          # output range ~ [0, 12] base tax
+    inputs: { development: 0.40, control: 0.20, prosperity: 0.20, urbanization: 0.20 }
+  manpower:
+    population: 0.60
+    development: 0.20
+    military_tradition: 0.20
+
+eu4_to_victoria3:
+  population:
+    development: 0.45
+    urbanization: 0.25
+    historical_growth: 0.30
+
+victoria3_to_hoi4:
+  civilian_factories:
+    industrial_output: 0.60
+    gdp: 0.20
+    infrastructure: 0.20

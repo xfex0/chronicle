@@ -1,0 +1,48 @@
+# Copy to <campaign_dir>/campaign.yaml. Validated by mega_converter.config.
+campaign:
+  name: "Ruthenia Mega Campaign"
+  seed: 45819283                 # every random decision derives from this (ТЗ §25)
+  historical_divergence: 0.35    # 0 = strict continuity … 1 = maximum alternate history
+  preserve_player_state: true
+  prevent_border_gore: true
+  allow_state_collapse: true
+
+dynasties:
+  preserve_player_dynasty: true
+  extinct_dynasty_protection: false
+
+culture:
+  assimilation_multiplier: 0.60
+  preserve_major_cultures: true
+
+religion:
+  conversion_multiplier: 0.50
+
+technology:
+  catch_up_limit: 0.20
+
+conversion:                      # must sum to 1
+  economy_weight: 0.30
+  population_weight: 0.25
+  military_weight: 0.15
+  historical_weight: 0.20
+  prestige_weight: 0.10
+
+# History Correction System (ТЗ §7) — compiled into priority-1000 rules.
+history_correction:
+  protect_states: []             # e.g. [country:000042]
+  preserve_dynasties: []
+  preserve_cultures: []
+  preserve_religions: []
+  preserve_capitals: []
+  prevent_complete_collapse: false
+  limit_assimilation: 0.20
+  limit_religious_conversion: 0.25
+  prevent_unrealistic_technology_loss: true
+
+files:                           # relative to this file
+  rules: [rules/core_history.yaml]
+  formulas: [formulas/conversion_formulas.yaml]
+
+plugins:
+  enabled: []                    # python hooks run only for plugins listed here

@@ -1,0 +1,32 @@
+# Builds the Chronicle Windows installer on GitHub — nothing to install locally.
+# Actions tab → build-windows → Run workflow (or push a tag like v0.1.0).
+name: build-windows
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            rust
+            apps/chronicle/src-tauri
+      - name: Build installer
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: chronicle-windows
+          path: dist-windows/*.exe
+      - name: Attach to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with: { files: "dist-windows/*.exe" }

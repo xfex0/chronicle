@@ -1,0 +1,132 @@
+# Chronicle game registry — the only place game facts live (no hardcoding in GUI/code).
+#
+# verified: true  = confirmed from a primary/public source (see `source`)
+# verified: false = plausible but NOT confirmed; code treats it as a hint only and the UI
+#                   shows "unverified". Confirm on a real installation, then flip to true.
+#
+# Dates: Y.M.D; negative year = BC (astronomical numbering is handled by adapters).
+#
+# save_formats: what THIS Chronicle version's adapter can import (supported | planned |
+# unsupported). Formats: plaintext, compressed (zip), binary (ironman + binary autosaves;
+# needs per-patch token data). Never a global "turn ironman off".
+
+version: 1
+
+games:
+  imperator:
+    display_name: "Imperator: Rome"
+    steam_app_id: 859580
+    status: planned
+    era: { start: "-304", end: "-27" }        # in-game calendar is AUC; adapter converts
+    era_verified: false
+    install_fingerprint:
+      candidates: ["binaries/imperator.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Imperator/save games"]
+      verified: false
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+  ck3:
+    display_name: "Crusader Kings III"
+    steam_app_id: 1158310
+    status: mvp
+    era: { start: "867.1.1", end: "1453.1.1" }
+    era_verified: true
+    install_fingerprint:
+      candidates: ["binaries/ck3.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Crusader Kings III/save games"]
+      verified: true
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }   # MVP 1
+  eu5:
+    display_name: "Europa Universalis V"
+    steam_app_id: 3450310
+    status: planned
+    era: { start: "1337.4.1", end: "1837.1.1" }   # released 2025-11-04
+    era_verified: true
+    install_fingerprint:
+      candidates: ["binaries/eu5.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Europa Universalis V/save games"]
+      verified: false
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+  victoria3:
+    display_name: "Victoria 3"
+    steam_app_id: 529340
+    status: planned
+    era: { start: "1836.1.1", end: "1936.1.1" }
+    era_verified: true
+    install_fingerprint:
+      candidates: ["binaries/victoria3.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Victoria 3/save games"]
+      verified: false
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+  hoi4:
+    display_name: "Hearts of Iron IV"
+    steam_app_id: 394360
+    status: planned
+    era: { start: "1936.1.1", end: "1948.1.1" }
+    era_verified: true
+    install_fingerprint:
+      candidates: ["hoi4.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Hearts of Iron IV/save games"]
+      verified: true
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+  modern_bridge:
+    display_name: "Modern Era Bridge"
+    kind: virtual                                 # simulated by Chronicle, no game install
+    status: planned
+    era: { start: "1948.1.1", end: "2200.1.1" }
+    era_verified: true
+
+  stellaris:
+    display_name: "Stellaris"
+    steam_app_id: 281990
+    status: planned
+    era: { start: "2200.1.1" }
+    era_verified: true
+    install_fingerprint:
+      candidates: ["stellaris.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Stellaris/save games"]
+      verified: true
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+  eu4:
+    display_name: "Europa Universalis IV"
+    steam_app_id: 236850
+    status: legacy
+    era: { start: "1444.11.11", end: "1821.1.2" }
+    era_verified: false
+    install_fingerprint:
+      candidates: ["eu4.exe"]
+      verified: false
+    save_dir:
+      documents_subpath: ["Paradox Interactive/Europa Universalis IV/save games"]
+      verified: true
+    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+# Main campaign chain, in order.
+chain: [imperator, ck3, eu5, victoria3, hoi4, modern_bridge, stellaris]
+
+# Default transition = the date the campaign LEAVES the source game.
+# Rule: history only moves forward, so the default is the target's native start date when it
+# falls inside the source era (no overlap, no time travel). Every date is user-configurable.
+transitions:
+  - { from: imperator, to: ck3, default_date: "-27", note: "gap: target starts in 867" }
+  - from: ck3
+    to: eu5
+    default_date: "1337.4.1"             # EU5 native start: seamless, recommended
+    alternatives: ["1453.1.1"]           # advanced: finish CK3, EU5 world starts in 1453
+    custom_start_supported: false        # EU5 adapter cannot build a non-native start yet
+    note: "CK3 is played 867→1337, EU5 continues from its own start"
+  - { from: eu5, to: victoria3, default_date: "1836.1.1" }
+  - { from: victoria3, to: hoi4, default_date: "1936.1.1" }
+  - { from: hoi4, to: modern_bridge, default_date: "1948.1.1" }
+  - { from: modern_bridge, to: stellaris, default_date: "2200.1.1" }
+  - { from: ck3, to: eu4, default_date: "1444.11.11", note: "legacy route" }

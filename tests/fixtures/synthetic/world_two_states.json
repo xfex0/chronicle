@@ -1,0 +1,297 @@
+{
+  "countries": {
+    "country:000001": {
+      "bureaucracy": 0.3,
+      "capital": "territory:000001",
+      "centralization": 0.2,
+      "economy": {
+        "trade_dependency": 0.2
+      },
+      "flags": [],
+      "id": "country:000001",
+      "legitimacy": 0.35,
+      "name": "Empire of the East",
+      "prestige": 0.4,
+      "primary_culture": "culture:000001",
+      "religion": "religion:000001",
+      "ruling_dynasty": "dynasty:000001",
+      "stability": 0.5,
+      "subjects": [
+        {
+          "autonomy": 0.8,
+          "kind": "vassal",
+          "subject": "country:000003"
+        },
+        {
+          "autonomy": 0.8,
+          "kind": "vassal",
+          "subject": "country:000004"
+        }
+      ],
+      "territories": [
+        "territory:000001",
+        "territory:000002",
+        "territory:000003"
+      ]
+    },
+    "country:000002": {
+      "bureaucracy": 0.8,
+      "capital": "territory:000004",
+      "centralization": 0.9,
+      "economy": {
+        "trade_dependency": 0.65
+      },
+      "flags": [],
+      "id": "country:000002",
+      "legitimacy": 0.9,
+      "name": "Kingdom of Ruthenia",
+      "prestige": 0.4,
+      "primary_culture": "culture:000004",
+      "religion": "religion:000001",
+      "ruling_dynasty": "dynasty:000002",
+      "stability": 0.5,
+      "subjects": [],
+      "territories": [
+        "territory:000004",
+        "territory:000005"
+      ]
+    },
+    "country:000003": {
+      "bureaucracy": 0.3,
+      "capital": "territory:000006",
+      "centralization": 0.5,
+      "economy": {
+        "trade_dependency": 0.2
+      },
+      "flags": [],
+      "id": "country:000003",
+      "legitimacy": 0.5,
+      "name": "Duchy of the West March",
+      "overlord": "country:000001",
+      "prestige": 0.4,
+      "stability": 0.5,
+      "subjects": [],
+      "territories": [
+        "territory:000006"
+      ]
+    },
+    "country:000004": {
+      "bureaucracy": 0.3,
+      "capital": "territory:000007",
+      "centralization": 0.5,
+      "economy": {
+        "trade_dependency": 0.2
+      },
+      "flags": [],
+      "id": "country:000004",
+      "legitimacy": 0.5,
+      "name": "Duchy of the South",
+      "overlord": "country:000001",
+      "prestige": 0.4,
+      "stability": 0.5,
+      "subjects": [],
+      "territories": [
+        "territory:000007"
+      ]
+    }
+  },
+  "cultures": {
+    "culture:000001": {
+      "id": "culture:000001",
+      "name": "Eastern"
+    },
+    "culture:000002": {
+      "id": "culture:000002",
+      "name": "Western"
+    },
+    "culture:000003": {
+      "id": "culture:000003",
+      "name": "Southern"
+    },
+    "culture:000004": {
+      "id": "culture:000004",
+      "name": "Ruthenian"
+    }
+  },
+  "meta": {
+    "converter_version": "0.1.0",
+    "date": {
+      "day": 1,
+      "month": 1,
+      "year": 1453
+    },
+    "schema_version": 1,
+    "seed": 45819283,
+    "source_game": "ck3",
+    "source_game_version": "synthetic"
+  },
+  "religions": {
+    "religion:000001": {
+      "id": "religion:000001",
+      "name": "Old Faith"
+    }
+  },
+  "territories": {
+    "territory:000001": {
+      "controller": "country:000001",
+      "development": 10.0,
+      "id": "territory:000001",
+      "name": "Territory 1",
+      "owner": "country:000001",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000001": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000002": {
+      "controller": "country:000001",
+      "development": 10.0,
+      "id": "territory:000002",
+      "name": "Territory 2",
+      "owner": "country:000001",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000002": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000003": {
+      "controller": "country:000001",
+      "development": 10.0,
+      "id": "territory:000003",
+      "name": "Territory 3",
+      "owner": "country:000001",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000003": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000004": {
+      "controller": "country:000002",
+      "development": 10.0,
+      "id": "territory:000004",
+      "name": "Territory 4",
+      "owner": "country:000002",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000004": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000005": {
+      "controller": "country:000002",
+      "development": 10.0,
+      "id": "territory:000005",
+      "name": "Territory 5",
+      "owner": "country:000002",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000004": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000006": {
+      "controller": "country:000003",
+      "development": 10.0,
+      "id": "territory:000006",
+      "name": "Territory 6",
+      "owner": "country:000003",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000002": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    },
+    "territory:000007": {
+      "controller": "country:000004",
+      "development": 10.0,
+      "id": "territory:000007",
+      "name": "Territory 7",
+      "owner": "country:000004",
+      "population": {
+        "classes": {},
+        "culture_distribution": {
+          "culture:000003": 1.0
+        },
+        "literacy": 0.05,
+        "migration_balance": 0.0,
+        "political_radicalism": 0.0,
+        "religion_distribution": {
+          "religion:000001": 1.0
+        },
+        "total": 1000.0,
+        "urbanization": 0.1,
+        "wealth": 0.0,
+        "workforce": 0.0
+      }
+    }
+  }
+}

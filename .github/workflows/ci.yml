@@ -1,0 +1,38 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  rust:
+    strategy:
+      matrix: { os: [ubuntu-latest, windows-latest] }
+    runs-on: ${{ matrix.os }}
+    defaults: { run: { working-directory: rust } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { components: "rustfmt, clippy" }
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets
+      - run: cargo test --workspace
+      - name: Developer smoke test (demo campaign + self-test)
+        shell: bash
+        run: |
+          cargo run -q -p chronicle-devtools -- demo "$RUNNER_TEMP/demo"
+          cargo run -q -p chronicle-devtools -- check "$RUNNER_TEMP/demo"
+          cargo run -q -p chronicle-devtools -- owner "$RUNNER_TEMP/demo" Halych 1250
+  ui:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: apps/chronicle } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - run: npm install
+      - run: npm run typecheck
+  research:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: tools/research } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -e ".[dev]" && pytest -q

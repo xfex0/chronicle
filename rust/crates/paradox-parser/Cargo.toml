@@ -1,0 +1,21 @@
+[package]
+name = "paradox-parser"
+description = "Zero-copy lexer/parser for Paradox Clausewitz text saves + container detection"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[features]
+default = ["mmap", "zip"]
+mmap = ["dep:memmap2"]
+zip = ["dep:zip"]
+
+[dependencies]
+thiserror.workspace = true
+memmap2 = { workspace = true, optional = true }
+zip = { workspace = true, optional = true }
+
+[[bin]]
+name = "paradox-inspect"
+path = "src/bin/paradox-inspect.rs"

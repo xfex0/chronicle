@@ -1,0 +1,51 @@
+# Core historical-tradition rules. Metrics come from history features
+# (python/mega_converter/simulation/history_features.py) or entity attributes (dotted paths).
+rules:
+  - name: ancient_dynasty
+    description: A dynasty that has ruled for centuries carries legitimacy and prestige.
+    scope: country
+    phase: history
+    if:
+      dynasty_age_years: { greater_than: 300 }
+    then:
+      add_modifier: { legitimacy: 0.10, prestige: 0.10 }
+      add_flag: ancient_dynasty_tradition
+
+  - name: fragmented_state
+    description: Repeated civil wars leave lasting regionalism.
+    scope: country
+    phase: history
+    if:
+      civil_wars: { greater_than: 5 }
+    then:
+      - add_modifier: { stability: -0.10, regionalism: 0.20 }
+      - add_flag: political_fragmentation
+
+  - name: merchant_tradition
+    scope: country
+    phase: history
+    if:
+      economy.trade_dependency: { greater_than: 0.60 }
+    then:
+      add_modifier: { trade_efficiency: 0.15 }
+
+  - name: long_republic
+    scope: country
+    phase: history
+    if:
+      years_by_government.republic: { at_least: 400 }
+    then:
+      add_flag: merchant_republic_tradition
+
+  - name: shattered_empire_splits
+    description: Weak centre + many civil wars ⇒ recommend successor states.
+    scope: country
+    phase: pre_conversion
+    priority: 200
+    if:
+      all:
+        - centralization: { less_than: 0.30 }
+        - civil_wars: { at_least: 5 }
+        - not: { has_flag: unifying_dynasty }
+    then:
+      recommend_conversion: successor_states

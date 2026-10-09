@@ -1,0 +1,36 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+paradox-parser = { path = "crates/paradox-parser" }
+chronicle-core = { path = "crates/chronicle-core" }
+chronicle-db = { path = "crates/chronicle-db" }
+chronicle-steam = { path = "crates/chronicle-steam" }
+chronicle-rng = { path = "crates/chronicle-rng" }
+chronicle-devtools = { path = "crates/chronicle-devtools" }
+geocore = { path = "crates/geocore" }
+
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# serde_yaml is archived upstream but stable and widely used; swap for a maintained fork if needed.
+serde_yaml = "0.9"
+thiserror = "2"
+memmap2 = "0.9"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+dirs = "5"
+winreg = "0.52"
+uuid = { version = "1", features = ["v4"] }
+tempfile = "3"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+debug = "line-tables-only"

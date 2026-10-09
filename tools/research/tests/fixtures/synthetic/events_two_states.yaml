@@ -1,0 +1,85 @@
+# Synthetic timeline (converter event vocabulary, not game data)
+- date:
+  - 844
+  - 3
+  - 1
+  kind: state_created
+  actors:
+  - country:000002
+  payload:
+    dynasty: dynasty:000002
+- date:
+  - 1010
+  - 1
+  - 1
+  kind: state_created
+  actors:
+  - country:000001
+  payload:
+    dynasty: dynasty:000001
+- date:
+  - 1100
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1140
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1180
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1220
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1260
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1300
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1340
+  - 1
+  - 1
+  kind: civil_war
+  actors:
+  - country:000001
+  payload: {}
+- date:
+  - 1238
+  - 1
+  - 1
+  kind: major_war
+  actors:
+  - country:000002
+  - country:000001
+  payload:
+    name: Steppe invasion

@@ -1,0 +1,21 @@
+/rust/target/
+/apps/chronicle/src-tauri/target/
+/apps/chronicle/src-tauri/gen/
+/apps/chronicle/src-tauri/icons/
+/apps/chronicle/dist/
+node_modules/
+__pycache__/
+*.egg-info/
+.venv*/
+/dist-windows/
+# real saves and campaign data never go into git
+*.ck3
+*.eu5
+*.eu4
+*.v3
+*.hoi4
+*.sav
+*.rome
+*.db
+*.db-wal
+*.db-shm
