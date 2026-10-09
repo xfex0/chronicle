@@ -443,7 +443,8 @@ pub(crate) mod tests {
     #[test]
     fn vacant_liege_title_does_not_break_realms() {
         // Real case (1.0.2): c_gurma's de facto liege d_mamprusi has no holder.
-        let doc = String::from_utf8_lossy(FIXTURE).replace(
+        // Normalise line endings first: on Windows, git may check the fixture out with CRLF.
+        let doc = String::from_utf8_lossy(FIXTURE).replace("\r\n", "\n").replace(
             "\t\t6={\n\t\t\tkey=\"c_c\"\n\t\t\tholder=300\n",
             "\t\t6={\n\t\t\tkey=\"c_c\"\n\t\t\tholder=300\n\t\t\tde_facto_liege=9\n",
         ).replace("\t\t8={", "\t\t9={\n\t\t\tkey=\"d_vacant\"\n\t\t}\n\t\t8={");
