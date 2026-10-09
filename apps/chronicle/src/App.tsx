@@ -74,6 +74,7 @@ export function App() {
         <aside className="rail">
           <p className="brand">Chronicle</p>
           <p className="tagline">{translate(lang, "app.tagline")}</p>
+          <p className="version" title={translate(lang, "set.version")}>v{boot.version}</p>
           <nav className="nav" aria-label="Chronicle">
             {(boot.dev_mode ? [...NAV, "developer" as Screen] : NAV).map((s) => (
               <button

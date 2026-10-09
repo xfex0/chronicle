@@ -56,7 +56,8 @@ pub type Result<T> = std::result::Result<T, DbError>;
 
 fn open_conn(path: &Path) -> Result<Connection> {
     let conn = Connection::open(path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL;")?;
+    // WAL + synchronous=NORMAL: durable at checkpoints, far fewer disk flushes on Windows.
+    conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA journal_mode = WAL; PRAGMA synchronous = NORMAL;")?;
     Ok(conn)
 }
 
@@ -498,7 +499,8 @@ impl CampaignDb {
 
     /// Allocate a new stable Chronicle id.
     pub fn next_id(&mut self, kind: EntityKind) -> Result<ChronicleId> {
-        let tx = self.conn.transaction()?;
+        // A savepoint works both on its own and inside a bulk import transaction.
+        let tx = self.conn.savepoint()?;
         tx.execute("INSERT OR IGNORE INTO id_counters(kind, next) VALUES (?1, 1)", [kind.as_str()])?;
         let n: i64 = tx.query_row("SELECT next FROM id_counters WHERE kind = ?1", [kind.as_str()], |r| r.get(0))?;
         tx.execute("UPDATE id_counters SET next = next + 1 WHERE kind = ?1", [kind.as_str()])?;

@@ -35,6 +35,22 @@ try {
     Run { cargo run -q -p chronicle-devtools -- check $demo } "self-test"
 } finally { Pop-Location }
 
+# Version: every CI build gets its own number (0.1.<run>) so the app and the installer show
+# which build is installed; local builds stay 0.1.0 and are marked "dev".
+$runNumber = $env:GITHUB_RUN_NUMBER
+$commit = (git -C $Root rev-parse --short HEAD 2>$null)
+$configArgs = @()
+if ($runNumber) {
+    $version = "0.1.$runNumber"
+    $env:CHRONICLE_BUILD = $runNumber
+    $env:CHRONICLE_VERSION_OVERRIDE = $version
+    $cfg = Join-Path ([System.IO.Path]::GetTempPath()) "chronicle-version.json"
+    Set-Content -Path $cfg -Value ("{ ""version"": ""$version"" }") -Encoding ascii
+    $configArgs = @("--config", $cfg)
+    Write-Host "Version $version"
+}
+if ($commit) { $env:CHRONICLE_COMMIT = $commit }
+
 Push-Location $App
 try {
     Step "Frontend dependencies / Залежності інтерфейсу"
@@ -46,7 +62,7 @@ try {
     }
 
     Step "Installer (first Rust build takes 5-15 min) / Інсталятор"
-    Run { npm run tauri build -- --bundles nsis } "tauri build"
+    Run { npm run tauri build -- --bundles nsis @configArgs } "tauri build"
 } finally {
     Pop-Location
 }

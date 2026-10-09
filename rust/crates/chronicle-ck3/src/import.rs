@@ -120,8 +120,6 @@ fn period_warning(r: Result<(), DbError>, what: &str, warnings: &mut Vec<String>
 pub fn import_world(db: &mut CampaignDb, world: &Ck3World, save: &Path) -> Result<ImportReport, ImportError> {
     let map = Ck3Mapping::builtin();
     let date = world.date.ok_or(ImportError::NoDate)?;
-    let bookmark = world.bookmark.unwrap_or(PartialDate::ymd(867, 1, 1));
-    let policy = db.summary()?.settings.confidence;
     let version_verified = world.version.as_ref().is_some_and(|v| map.verified_versions.contains(v));
     let mut rep = ImportReport {
         game_version: world.version.clone(),
@@ -139,18 +137,44 @@ pub fn import_world(db: &mut CampaignDb, world: &Ck3World, save: &Path) -> Resul
     db.backup(BackupKind::Auto, "before ck3 import")?;
     let (stored, sha) = store_original(db, save)?;
     rep.stored_copy = stored.display().to_string();
-    let save_id = db.record_save_file(
-        GAME,
-        &save.display().to_string(),
-        &rep.stored_copy,
-        &sha,
-        Some(date),
-        world.version.as_deref(),
-    )?;
-    let kind = if db.snapshot_count(GAME)? == 0 { "initial" } else { "periodic" };
-    rep.snapshot_id = db.record_snapshot(GAME, date, kind, &rep.stored_copy, &sha, Some(save_id))?;
 
-    // --- ids for everything this import touches
+    // Everything below is ONE transaction: a single disk flush instead of thousands, and an
+    // all-or-nothing import (a failure leaves the campaign exactly as it was).
+    db.begin_bulk()?;
+    match import_body(db, world, save, &sha, date, version_verified, &mut rep) {
+        Ok(()) => db.commit_bulk()?,
+        Err(e) => {
+            db.rollback_bulk();
+            return Err(e);
+        }
+    }
+    db.integrity_check()?;
+    rep.warnings.sort();
+    rep.warnings.dedup();
+    Ok(rep)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn import_body(
+    db: &mut CampaignDb,
+    world: &Ck3World,
+    save: &Path,
+    sha: &str,
+    date: PartialDate,
+    version_verified: bool,
+    rep: &mut ImportReport,
+) -> Result<(), ImportError> {
+    let map = Ck3Mapping::builtin();
+    let bookmark = world.bookmark.unwrap_or(PartialDate::ymd(867, 1, 1));
+    let policy = db.summary()?.settings.confidence;
+
+    let save_id = db.record_save_file(GAME, &save.display().to_string(), &rep.stored_copy, sha, Some(date), world.version.as_deref())?;
+    let kind = if db.snapshot_count(GAME)? == 0 { "initial" } else { "periodic" };
+    rep.snapshot_id = db.record_snapshot(GAME, date, kind, &rep.stored_copy, sha, Some(save_id))?;
+
+    // lookups built once (the save has ~12 000 titles)
+    let title_by_key: BTreeMap<&str, &crate::read::Ck3Title> = world.titles.values().map(|t| (t.key.as_str(), t)).collect();
+
     let mut new_entities = 0usize;
     let mut id_for = |db: &mut CampaignDb, gid: String, kind: EntityKind| -> Result<ChronicleId, ImportError> {
         let (id, created) = db.entity_for(GAME, &gid, kind)?;
@@ -192,12 +216,13 @@ pub fn import_world(db: &mut CampaignDb, world: &Ck3World, save: &Path) -> Resul
     }
     rep.dynasties = house_ids.len();
 
-    // --- realms, rulers, counties
-    let mut country_ids: BTreeMap<String, ChronicleId> = BTreeMap::new(); // primary title id → country
-    let mut county_ids: Vec<(ChronicleId, ChronicleId)> = Vec::new(); // (territory, owner)
-    let mut rulers = Vec::new();
+    // realms, rulers, counties
+    let mut country_ids: BTreeMap<String, ChronicleId> = BTreeMap::new();
     for realm in &world.realms {
-        let title = &world.titles[&realm.primary_title];
+        let Some(title) = world.titles.get(&realm.primary_title) else {
+            rep.warnings.push(format!("realm of character {} skipped: primary title not found", realm.ruler));
+            continue;
+        };
         let ruler = world.characters.get(&realm.ruler);
         let country = id_for(&mut *db, format!("title:{}", title.key), EntityKind::Country)?;
         let culture = ruler.and_then(|r| r.culture.as_ref()).and_then(|c| culture_ids.get(c));
@@ -210,169 +235,150 @@ pub fn import_world(db: &mut CampaignDb, world: &Ck3World, save: &Path) -> Resul
         }
         if let Some(r) = ruler {
             let cid = id_for(&mut *db, format!("char:{}", r.id), EntityKind::Character)?;
-            let house = r.house.as_ref().and_then(|h| house_ids.get(h));
-            db.upsert_character(&cid, &r.name, r.birth, house, culture, faith)?;
-            rulers.push((country.clone(), cid, house.cloned(), r.became_ruler.unwrap_or(date)));
+            let house = r.house.as_ref().and_then(|h| house_ids.get(h)).cloned();
+            db.upsert_character(&cid, &r.name, r.birth, house.as_ref(), culture, faith)?;
+            let since = r.became_ruler.unwrap_or(date);
+            period_warning(db.set_period(&country, Aspect::Ruler, None, Some(&cid), since, GAME, "save"), "ruler", &mut rep.warnings)?;
+            if let Some(h) = &house {
+                period_warning(db.set_period(&country, Aspect::Dynasty, None, Some(h), since, GAME, "save"), "dynasty", &mut rep.warnings)?;
+            }
+            rep.rulers += 1;
         }
         for ck in &realm.counties {
             let tid = id_for(&mut *db, format!("county:{ck}"), EntityKind::Territory)?;
-            let tname = world.titles.values().find(|t| t.key == *ck).map(|t| t.name.clone()).unwrap_or_default();
-            db.upsert_territory(&tid, if tname.is_empty() { ck } else { &tname })?;
-            county_ids.push((tid, country.clone()));
+            let tname = title_by_key.get(ck.as_str()).map(|t| t.name.as_str()).unwrap_or("");
+            db.upsert_territory(&tid, if tname.is_empty() { ck.as_str() } else { tname })?;
+            if period_warning(db.set_owner(&tid, Some(&country), date, GAME, "save"), "ownership", &mut rep.warnings)? {
+                rep.ownership_changes += 1;
+            }
+            rep.counties += 1;
         }
         country_ids.insert(realm.primary_title.clone(), country);
     }
-    rep.realms = world.realms.len();
-    rep.counties = county_ids.len();
-    rep.rulers = rulers.len();
+    rep.realms = country_ids.len();
+    rep.new_entities = new_entities;
 
-    for (tid, owner) in &county_ids {
-        if period_warning(db.set_owner(tid, Some(owner), date, GAME, "save"), "ownership", &mut rep.warnings)? {
-            rep.ownership_changes += 1;
+    // semantic values (once per save date)
+    for realm in &world.realms {
+        let Some(country) = country_ids.get(&realm.primary_title) else { continue };
+        if db.semantic_exists(country, "centralization", date, GAME)? {
+            continue; // this save was already imported
         }
-    }
-    for (country, ruler, house, since) in &rulers {
-        period_warning(db.set_period(country, Aspect::Ruler, None, Some(ruler), *since, GAME, "save"), "ruler", &mut rep.warnings)?;
-        if let Some(h) = house {
-            period_warning(db.set_period(country, Aspect::Dynasty, None, Some(h), *since, GAME, "save"), "dynasty", &mut rep.warnings)?;
+        let ruler = world.characters.get(&realm.ruler);
+        let counties: Vec<_> = realm.counties.iter().filter_map(|k| world.counties.get(k)).collect();
+        if counties.is_empty() {
+            continue;
         }
-    }
-    rep.warnings.sort();
-    rep.warnings.dedup();
+        let n = counties.len() as f64;
+        let avg_control = counties.iter().map(|c| c.control).sum::<f64>() / n;
+        let avg_dev = counties.iter().map(|c| c.development).sum::<f64>() / n;
+        let law = ruler.and_then(|r| r.laws.iter().find_map(|l| map.authority_law_level.get(l).copied()));
 
-    // --- bulk part: semantic values + journal
-    db.begin_bulk()?;
-    let result = (|| -> Result<(), ImportError> {
-        for realm in &world.realms {
-            let country = &country_ids[&realm.primary_title];
-            if db.semantic_exists(country, "centralization", date, GAME)? {
-                continue; // this save was already imported
-            }
-            let ruler = world.characters.get(&realm.ruler);
-            let counties: Vec<_> = realm.counties.iter().filter_map(|k| world.counties.get(k)).collect();
-            if counties.is_empty() {
+        let c = &map.centralization;
+        let centralization = c.authority_law * law.unwrap_or(0.0) + c.county_control * avg_control / 100.0;
+        let mut contrib = BTreeMap::new();
+        contrib.insert("authority_law".to_string(), c.authority_law * law.unwrap_or(0.0));
+        contrib.insert("county_control".to_string(), c.county_control * avg_control / 100.0);
+        db.add_semantic(
+            &SemanticInput {
+                entity: country,
+                date,
+                key: "centralization",
+                value: centralization,
+                source_game: GAME,
+                source_fields: &["landed_data.laws (authority)", "county_manager.county_control"],
+                contributions: contrib,
+                formula: &c.formula,
+                components: ConfidenceComponents::new(
+                    1 + usize::from(law.is_some()),
+                    2,
+                    c.mapping_reliability,
+                    version_verified,
+                    (0.0..=1.0).contains(&centralization),
+                ),
+                adapter_version: ADAPTER_VERSION,
+            },
+            &policy,
+        )?;
+
+        let domain: BTreeSet<&String> = ruler.map(|r| r.domain.iter().collect()).unwrap_or_default();
+        let direct = realm
+            .counties
+            .iter()
+            .filter(|k| title_by_key.get(k.as_str()).is_some_and(|t| domain.contains(&t.id)))
+            .count() as f64;
+        let autonomy = 1.0 - direct / n;
+        let ra = &map.regional_autonomy;
+        let mut contrib = BTreeMap::new();
+        contrib.insert("vassal_held_share".to_string(), autonomy);
+        db.add_semantic(
+            &SemanticInput {
+                entity: country,
+                date,
+                key: "regional_autonomy",
+                value: autonomy,
+                source_game: GAME,
+                source_fields: &["landed_data.domain", "landed_titles.de_facto_liege"],
+                contributions: contrib,
+                formula: &ra.formula,
+                components: ConfidenceComponents::new(usize::from(ruler.is_some()), 1, ra.mapping_reliability, version_verified, true),
+                adapter_version: ADAPTER_VERSION,
+            },
+            &policy,
+        )?;
+
+        let ad = &map.average_development;
+        let mut contrib = BTreeMap::new();
+        contrib.insert("county_development_mean".to_string(), avg_dev);
+        db.add_semantic(
+            &SemanticInput {
+                entity: country,
+                date,
+                key: "average_development",
+                value: avg_dev,
+                source_game: GAME,
+                source_fields: &["county_manager.development"],
+                contributions: contrib,
+                formula: &ad.formula,
+                components: ConfidenceComponents::new(1, 1, ad.mapping_reliability, version_verified, avg_dev >= 0.0),
+                adapter_version: ADAPTER_VERSION,
+            },
+            &policy,
+        )?;
+        rep.semantic_values += 3;
+    }
+
+    // journal from kingdom/empire history
+    for title in world.titles.values().filter(|t| t.tier() >= map.history_min_tier) {
+        let actor = country_ids.get(&title.id);
+        for h in &title.history {
+            let (event_type, importance) = match h.kind {
+                HistoryKind::Holder => ("ruler_changed", if title.tier() >= 4 { 4 } else { 3 }),
+                HistoryKind::Created => ("title_created", 4),
+                HistoryKind::Destroyed => ("title_destroyed", 4),
+            };
+            let key = format!("{}:{}:{}", title.key, h.date, event_type);
+            if db.event_exists(event_type, h.date, &key)? {
                 continue;
             }
-            let n = counties.len() as f64;
-            let avg_control = counties.iter().map(|c| c.control).sum::<f64>() / n;
-            let avg_dev = counties.iter().map(|c| c.development).sum::<f64>() / n;
-            let law = ruler.and_then(|r| r.laws.iter().find_map(|l| map.authority_law_level.get(l).copied()));
-
-            let c = &map.centralization;
-            let centralization = c.authority_law * law.unwrap_or(0.0) + c.county_control * avg_control / 100.0;
-            let mut contrib = BTreeMap::new();
-            contrib.insert("authority_law".to_string(), c.authority_law * law.unwrap_or(0.0));
-            contrib.insert("county_control".to_string(), c.county_control * avg_control / 100.0);
-            db.add_semantic(
-                &SemanticInput {
-                    entity: country,
-                    date,
-                    key: "centralization",
-                    value: centralization,
-                    source_game: GAME,
-                    source_fields: &["landed_data.laws (authority)", "county_manager.county_control"],
-                    contributions: contrib,
-                    formula: &c.formula,
-                    components: ConfidenceComponents::new(
-                        1 + usize::from(law.is_some()),
-                        2,
-                        c.mapping_reliability,
-                        version_verified,
-                        (0.0..=1.0).contains(&centralization),
-                    ),
-                    adapter_version: ADAPTER_VERSION,
-                },
-                &policy,
-            )?;
-
-            let domain: BTreeSet<&String> = ruler.map(|r| r.domain.iter().collect()).unwrap_or_default();
-            let direct = realm
-                .counties
-                .iter()
-                .filter(|k| world.titles.values().any(|t| t.key == **k && domain.contains(&t.id)))
-                .count() as f64;
-            let autonomy = 1.0 - direct / n;
-            let ra = &map.regional_autonomy;
-            let mut contrib = BTreeMap::new();
-            contrib.insert("vassal_held_share".to_string(), autonomy);
-            db.add_semantic(
-                &SemanticInput {
-                    entity: country,
-                    date,
-                    key: "regional_autonomy",
-                    value: autonomy,
-                    source_game: GAME,
-                    source_fields: &["landed_data.domain", "landed_titles.de_facto_liege"],
-                    contributions: contrib,
-                    formula: &ra.formula,
-                    components: ConfidenceComponents::new(usize::from(ruler.is_some()), 1, ra.mapping_reliability, version_verified, true),
-                    adapter_version: ADAPTER_VERSION,
-                },
-                &policy,
-            )?;
-
-            let ad = &map.average_development;
-            let mut contrib = BTreeMap::new();
-            contrib.insert("county_development_mean".to_string(), avg_dev);
-            db.add_semantic(
-                &SemanticInput {
-                    entity: country,
-                    date,
-                    key: "average_development",
-                    value: avg_dev,
-                    source_game: GAME,
-                    source_fields: &["county_manager.development"],
-                    contributions: contrib,
-                    formula: &ad.formula,
-                    components: ConfidenceComponents::new(1, 1, ad.mapping_reliability, version_verified, avg_dev >= 0.0),
-                    adapter_version: ADAPTER_VERSION,
-                },
-                &policy,
-            )?;
-            rep.semantic_values += 3;
-        }
-
-        for title in world.titles.values().filter(|t| t.tier() >= map.history_min_tier) {
-            let actor = country_ids.get(&title.id);
-            for h in &title.history {
-                let (event_type, importance) = match h.kind {
-                    HistoryKind::Holder => ("ruler_changed", if title.tier() >= 4 { 4 } else { 3 }),
-                    HistoryKind::Created => ("title_created", 4),
-                    HistoryKind::Destroyed => ("title_destroyed", 4),
-                };
-                let key = format!("{}:{}:{}", title.key, h.date, event_type);
-                if db.event_exists(event_type, h.date, &key)? {
-                    continue;
-                }
-                let origin = if h.date < bookmark { EventOrigin::Game } else { EventOrigin::Save };
-                db.add_event(&NewEvent {
-                    game_version: world.version.as_deref(),
-                    actor,
-                    payload: serde_json::json!({
-                        "key": key,
-                        "title": title.key,
-                        "title_name": title.name,
-                        "ck3_holder": h.holder,
-                    }),
-                    importance,
-                    ..NewEvent::simple(h.date, GAME, event_type, origin)
-                })?;
-                rep.events_added += 1;
-            }
-        }
-        db.set_current(GAME, date)?;
-        Ok(())
-    })();
-    match result {
-        Ok(()) => db.commit_bulk()?,
-        Err(e) => {
-            db.rollback_bulk();
-            return Err(e);
+            let origin = if h.date < bookmark { EventOrigin::Game } else { EventOrigin::Save };
+            db.add_event(&NewEvent {
+                game_version: world.version.as_deref(),
+                actor,
+                payload: serde_json::json!({
+                    "key": key,
+                    "title": title.key,
+                    "title_name": title.name,
+                    "ck3_holder": h.holder,
+                }),
+                importance,
+                ..NewEvent::simple(h.date, GAME, event_type, origin)
+            })?;
+            rep.events_added += 1;
         }
     }
-    db.integrity_check()?;
-    rep.new_entities = new_entities;
-    Ok(rep)
+    db.set_current(GAME, date)?;
+    Ok(())
 }
 
 #[cfg(test)]

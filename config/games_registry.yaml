@@ -26,6 +26,7 @@ games:
       documents_subpath: ["Paradox Interactive/Imperator/save games"]
       verified: false
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_extensions: [".rome"]
   ck3:
     # Verified on 1.0.2: "SAV0102…" header + text meta + ZIP(gamestate, plain text).
     # Import into the campaign database works (chronicle-ck3). Ironman/binary needs token
@@ -42,6 +43,7 @@ games:
       documents_subpath: ["Paradox Interactive/Crusader Kings III/save games"]
       verified: true
     save_formats: { plaintext: supported, compressed: supported, binary: unsupported }
+    save_extensions: [".ck3"]
   eu5:
     display_name: "Europa Universalis V"
     steam_app_id: 3450310
@@ -55,6 +57,7 @@ games:
       documents_subpath: ["Paradox Interactive/Europa Universalis V/save games"]
       verified: false
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_extensions: [".eu5"]   # unverified
   victoria3:
     display_name: "Victoria 3"
     steam_app_id: 529340
@@ -68,6 +71,7 @@ games:
       documents_subpath: ["Paradox Interactive/Victoria 3/save games"]
       verified: false
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_extensions: [".v3"]
   hoi4:
     # Verified on 1.19.3 "Operation Postern": default saves start with "HOI4bin" (token-encoded
     # binary). Token names are not distributable, so Chronicle reads TEXT saves only:
@@ -85,6 +89,7 @@ games:
       documents_subpath: ["Paradox Interactive/Hearts of Iron IV/save games"]
       verified: true
     save_formats: { plaintext: planned, compressed: planned, binary: unsupported }
+    save_extensions: [".hoi4"]
   modern_bridge:
     display_name: "Modern Era Bridge"
     kind: virtual                                 # simulated by Chronicle, no game install
@@ -107,6 +112,7 @@ games:
       documents_subpath: ["Paradox Interactive/Stellaris/save games"]
       verified: true
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_extensions: [".sav"]
   eu4:
     display_name: "Europa Universalis IV"
     steam_app_id: 236850
@@ -120,6 +126,7 @@ games:
       documents_subpath: ["Paradox Interactive/Europa Universalis IV/save games"]
       verified: true
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_extensions: [".eu4"]
 # Main campaign chain, in order.
 chain: [imperator, ck3, eu5, victoria3, hoi4, modern_bridge, stellaris]
 

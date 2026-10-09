@@ -121,6 +121,50 @@ pub fn detect_game(game: &GameDef, steam: Option<&SteamInstall>, save_bases: &[P
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct SaveFileInfo {
+    pub path: PathBuf,
+    pub name: String,
+    pub size: u64,
+    /// Seconds since 1970 (file modification time).
+    pub modified: u64,
+}
+
+/// Save files of a game in `dir` (and one level of subfolders — Stellaris keeps one folder per
+/// empire), newest first. Files are only listed, never opened.
+pub fn list_save_files(dir: &Path, extensions: &[String], limit: usize) -> Vec<SaveFileInfo> {
+    fn walk(dir: &Path, exts: &[String], depth: u8, out: &mut Vec<SaveFileInfo>) {
+        let Ok(entries) = std::fs::read_dir(dir) else { return };
+        for e in entries.flatten() {
+            let path = e.path();
+            let Ok(meta) = e.metadata() else { continue };
+            if meta.is_dir() {
+                if depth > 0 {
+                    walk(&path, exts, depth - 1, out);
+                }
+                continue;
+            }
+            let name = e.file_name().to_string_lossy().into_owned();
+            let lower = name.to_lowercase();
+            if !exts.iter().any(|x| lower.ends_with(&x.to_lowercase())) {
+                continue;
+            }
+            let modified = meta
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs())
+                .unwrap_or(0);
+            out.push(SaveFileInfo { path, name, size: meta.len(), modified });
+        }
+    }
+    let mut out = Vec::new();
+    walk(dir, extensions, 1, &mut out);
+    out.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.name.cmp(&b.name)));
+    out.truncate(limit);
+    out
+}
+
 /// Detect every installable registry game (virtual stages are skipped).
 pub fn detect_all(registry: &GameRegistry, steam: Option<&SteamInstall>) -> Vec<Detection> {
     let bases = save_base_dirs();
@@ -151,6 +195,21 @@ mod tests {
         std::fs::create_dir_all(exe.parent().unwrap()).unwrap();
         std::fs::write(&exe, b"").unwrap();
         assert_eq!(verify_install_dir(&ck3, tmp.path()), FingerprintResult::Likely);
+    }
+
+    #[test]
+    fn lists_saves_newest_first_including_subfolders() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("old.ck3"), b"x").unwrap();
+        std::fs::write(tmp.path().join("notes.txt"), b"x").unwrap();
+        std::fs::create_dir(tmp.path().join("empire")).unwrap();
+        std::fs::write(tmp.path().join("empire/IRONMAN.SAV"), b"xy").unwrap();
+        let ck3 = list_save_files(tmp.path(), &[".ck3".to_string()], 10);
+        assert_eq!(ck3.len(), 1);
+        assert_eq!(ck3[0].name, "old.ck3");
+        let st = list_save_files(tmp.path(), &[".sav".to_string()], 10);
+        assert_eq!((st.len(), st[0].size), (1, 2), "case-insensitive, one level deep");
+        assert!(list_save_files(&tmp.path().join("missing"), &[".ck3".to_string()], 10).is_empty());
     }
 
     #[test]

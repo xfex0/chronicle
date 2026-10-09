@@ -294,20 +294,35 @@ pub fn read_gamestate(g: &[u8]) -> Result<Ck3World, Ck3Error> {
         }
     }
 
-    // primary titles: highest tier liege-less title of the ruler, ties by domain order
+    // primary titles: highest tier title of the ruler that answers to nobody else
+    // (no liege, or a liege title nobody holds), ties by domain order
+    let by_key: BTreeMap<&str, &Ck3Title> = w.titles.values().map(|t| (t.key.as_str(), t)).collect();
+    let free = |t: &Ck3Title| -> bool {
+        match t.liege.as_ref().and_then(|l| w.titles.get(l)) {
+            None => true,
+            Some(l) => l.holder.is_none() || l.holder == t.holder,
+        }
+    };
     let mut realms = Vec::new();
     for (ruler, counties) in groups {
         let domain = w.characters.get(&ruler).map(|c| c.domain.clone()).unwrap_or_default();
         let mut candidates: Vec<&Ck3Title> = w
             .titles
             .values()
-            .filter(|t| t.holder.as_deref() == Some(ruler.as_str()) && t.liege.is_none() && t.tier() >= 1)
+            .filter(|t| t.holder.as_deref() == Some(ruler.as_str()) && t.tier() >= 1 && free(t))
             .collect();
         candidates.sort_by_key(|t| {
             let pos = domain.iter().position(|d| *d == t.id).unwrap_or(usize::MAX);
             (std::cmp::Reverse(t.tier()), pos, t.id.parse::<u64>().unwrap_or(u64::MAX))
         });
-        let primary = candidates.first().map(|t| t.id.clone()).unwrap_or_else(|| counties[0].clone());
+        // Always a title id (never a county key): fall back to the realm's first county title.
+        let Some(primary) = candidates
+            .first()
+            .map(|t| t.id.clone())
+            .or_else(|| counties.iter().find_map(|k| by_key.get(k.as_str()).map(|t| t.id.clone())))
+        else {
+            continue;
+        };
         realms.push(Ck3Realm { ruler, primary_title: primary, counties });
     }
     realms.sort_by(|a, b| b.counties.len().cmp(&a.counties.len()).then(a.primary_title.cmp(&b.primary_title)));
@@ -369,14 +384,19 @@ fn realm_groups(w: &Ck3World) -> BTreeMap<String, Vec<String>> {
     for key in w.counties.keys() {
         let Some(county) = by_key.get(key.as_str()) else { continue };
         let Some(county_holder) = county.holder.clone() else { continue };
-        let mut top = *county;
+        // walk up the de facto liege chain; the ruler is the holder of the highest HELD title
+        // (a liege title can be vacant, e.g. a duchy nobody holds)
+        let mut ruler = county_holder;
+        let mut cur = *county;
         for _ in 0..32 {
-            match top.liege.as_ref().and_then(|l| w.titles.get(l)) {
-                Some(next) => top = next,
+            if let Some(h) = &cur.holder {
+                ruler = h.clone();
+            }
+            match cur.liege.as_ref().and_then(|l| w.titles.get(l)) {
+                Some(next) => cur = next,
                 None => break,
             }
         }
-        let ruler = top.holder.clone().unwrap_or(county_holder);
         groups.entry(ruler).or_default().push(key.clone());
     }
     groups
@@ -418,6 +438,19 @@ pub(crate) mod tests {
         assert_eq!(w.titles[&player.primary_title].key, "k_gujarat", "ties broken by domain order");
         assert_eq!(player.counties, ["c_a", "c_b"], "c_b is held by a vassal duke");
         assert_eq!(w.titles[&w.realms[1].primary_title].key, "c_c");
+    }
+
+    #[test]
+    fn vacant_liege_title_does_not_break_realms() {
+        // Real case (1.0.2): c_gurma's de facto liege d_mamprusi has no holder.
+        let doc = String::from_utf8_lossy(FIXTURE).replace(
+            "\t\t6={\n\t\t\tkey=\"c_c\"\n\t\t\tholder=300\n",
+            "\t\t6={\n\t\t\tkey=\"c_c\"\n\t\t\tholder=300\n\t\t\tde_facto_liege=9\n",
+        ).replace("\t\t8={", "\t\t9={\n\t\t\tkey=\"d_vacant\"\n\t\t}\n\t\t8={");
+        assert!(doc.contains("d_vacant") && doc.contains("de_facto_liege=9"), "fixture edit applied");
+        let w = read_gamestate(doc.as_bytes()).unwrap();
+        let realm = w.realms.iter().find(|r| r.ruler == "300").unwrap();
+        assert_eq!(w.titles[&realm.primary_title].key, "c_c", "primary is a title id, never a county key");
     }
 
     #[test]

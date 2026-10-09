@@ -27,6 +27,12 @@ struct AppState {
 
 type CmdResult<T> = Result<T, String>;
 
+/// Lock that survives an earlier panic: the data behind it is still valid (SQLite rolls back
+/// unfinished transactions), so one failed command must not break every later one.
+fn relock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
 fn err<E: std::fmt::Display>(e: E) -> String {
     e.to_string()
 }
@@ -35,7 +41,7 @@ fn err<E: std::fmt::Display>(e: E) -> String {
 
 #[derive(Serialize)]
 struct Bootstrap {
-    version: &'static str,
+    version: String,
     language: Option<String>,
     dev_mode: bool,
     registry: GameRegistry,
@@ -44,18 +50,29 @@ struct Bootstrap {
     current_campaign: Option<CampaignSummary>,
 }
 
+/// "0.1.27 · build 27 · a1b2c3d" for CI builds (set by scripts/build-windows.ps1),
+/// "0.1.0 · dev" for local builds.
+fn app_version() -> String {
+    let base = option_env!("CHRONICLE_VERSION_OVERRIDE").unwrap_or(chronicle_core::CHRONICLE_VERSION);
+    match (option_env!("CHRONICLE_BUILD"), option_env!("CHRONICLE_COMMIT")) {
+        (Some(b), Some(c)) => format!("{base} · build {b} · {c}"),
+        (Some(b), None) => format!("{base} · build {b}"),
+        _ => format!("{base} · dev"),
+    }
+}
+
 #[tauri::command]
 fn get_bootstrap(state: State<'_, AppState>) -> CmdResult<Bootstrap> {
     let current = {
-        let guard = state.campaign.lock().map_err(err)?;
+        let guard = relock(&state.campaign);
         match guard.as_ref() {
             Some(c) => Some(c.summary().map_err(err)?),
             None => None,
         }
     };
-    let db = state.db.lock().map_err(err)?;
+    let db = relock(&state.db);
     Ok(Bootstrap {
-        version: chronicle_core::CHRONICLE_VERSION,
+        version: app_version(),
         language: db.get_setting("language").map_err(err)?,
         dev_mode: db.get_setting("dev_mode").map_err(err)?.as_deref() == Some("1"),
         registry: state.registry.clone(),
@@ -70,7 +87,7 @@ fn set_language(state: State<'_, AppState>, language: String) -> CmdResult<()> {
     if !matches!(language.as_str(), "en" | "uk") {
         return Err(format!("unsupported language {language}"));
     }
-    state.db.lock().map_err(err)?.set_setting("language", &language).map_err(err)
+    relock(&state.db).set_setting("language", &language).map_err(err)
 }
 
 // ---------------------------------------------------------------- games & Steam
@@ -92,8 +109,8 @@ async fn scan_games(state: State<'_, AppState>) -> CmdResult<ScanResult> {
     .await
     .map_err(err)?;
 
-    *state.steam.lock().map_err(err)? = steam.clone();
-    let db = state.db.lock().map_err(err)?;
+    *relock(&state.steam) = steam.clone();
+    let db = relock(&state.db);
     for d in &detections {
         db.upsert_detected(&InstallationRow {
             game_key: d.game_key.clone(),
@@ -120,7 +137,7 @@ fn link_game_folder(state: State<'_, AppState>, game: String, path: String) -> C
     if !result.acceptable() {
         return Err(format!("not_a_game_folder:{}", result.as_str()));
     }
-    let db = state.db.lock().map_err(err)?;
+    let db = relock(&state.db);
     db.set_manual_install(&game, &path, result.as_str()).map_err(err)?;
     db.installations().map_err(err)
 }
@@ -130,19 +147,29 @@ fn link_save_folder(state: State<'_, AppState>, game: String, path: String) -> C
     if !PathBuf::from(&path).is_dir() {
         return Err("folder_not_found".into());
     }
-    let db = state.db.lock().map_err(err)?;
+    let db = relock(&state.db);
     db.set_manual_save(&game, &path).map_err(err)?;
     db.installations().map_err(err)
 }
 
 #[tauri::command]
 fn reset_game_detection(state: State<'_, AppState>, game: String) -> CmdResult<()> {
-    state.db.lock().map_err(err)?.reset_manual(&game).map_err(err)
+    relock(&state.db).reset_manual(&game).map_err(err)
+}
+
+/// Save files in the game's save folder (newest first). Only lists names, sizes and dates.
+#[tauri::command]
+fn list_saves(state: State<'_, AppState>, game: String) -> CmdResult<Vec<chronicle_steam::SaveFileInfo>> {
+    let def = state.registry.game(&game).ok_or_else(|| format!("unknown game {game}"))?;
+    let db = relock(&state.db);
+    let row = db.installations().map_err(err)?.into_iter().find(|r| r.game_key == game);
+    let Some(dir) = row.and_then(|r| r.save_path) else { return Ok(Vec::new()) };
+    Ok(chronicle_steam::list_save_files(&PathBuf::from(dir), &def.save_extensions, 50))
 }
 
 #[tauri::command]
 fn steam_log(state: State<'_, AppState>) -> CmdResult<Vec<String>> {
-    Ok(state.steam.lock().map_err(err)?.as_ref().map(|s| s.log.clone()).unwrap_or_default())
+    Ok(relock(&state.steam).as_ref().map(|s| s.log.clone()).unwrap_or_default())
 }
 
 #[tauri::command]
@@ -193,13 +220,8 @@ fn auto_seed() -> u64 {
 
 fn activate(state: &AppState, db: CampaignDb) -> CmdResult<CampaignSummary> {
     let summary = db.summary().map_err(err)?;
-    state
-        .db
-        .lock()
-        .map_err(err)?
-        .register_campaign(&summary.id, &summary.name, &summary.root)
-        .map_err(err)?;
-    *state.campaign.lock().map_err(err)? = Some(db);
+    relock(&state.db).register_campaign(&summary.id, &summary.name, &summary.root).map_err(err)?;
+    *relock(&state.campaign) = Some(db);
     Ok(summary)
 }
 
@@ -226,7 +248,7 @@ fn open_campaign(state: State<'_, AppState>, path: String) -> CmdResult<Campaign
 
 #[tauri::command]
 fn update_campaign_settings(state: State<'_, AppState>, settings: CampaignSettings) -> CmdResult<CampaignSummary> {
-    let guard = state.campaign.lock().map_err(err)?;
+    let guard = relock(&state.campaign);
     let db = guard.as_ref().ok_or("no_campaign")?;
     db.update_settings(&settings, &state.registry).map_err(err)?;
     db.summary().map_err(err)
@@ -234,13 +256,13 @@ fn update_campaign_settings(state: State<'_, AppState>, settings: CampaignSettin
 
 #[tauri::command]
 fn campaign_events(state: State<'_, AppState>, min_importance: u8) -> CmdResult<Vec<EventRow>> {
-    let guard = state.campaign.lock().map_err(err)?;
+    let guard = relock(&state.campaign);
     guard.as_ref().ok_or("no_campaign")?.events(min_importance, 5000).map_err(err)
 }
 
 #[tauri::command]
 fn backup_campaign(state: State<'_, AppState>) -> CmdResult<String> {
-    let guard = state.campaign.lock().map_err(err)?;
+    let guard = relock(&state.campaign);
     let path = guard.as_ref().ok_or("no_campaign")?.backup(BackupKind::Manual, "manual").map_err(err)?;
     Ok(path.display().to_string())
 }
@@ -267,7 +289,7 @@ fn check_transition_date(
 
 #[tauri::command]
 fn set_dev_mode(state: State<'_, AppState>, enabled: bool) -> CmdResult<()> {
-    state.db.lock().map_err(err)?.set_setting("dev_mode", if enabled { "1" } else { "0" }).map_err(err)
+    relock(&state.db).set_setting("dev_mode", if enabled { "1" } else { "0" }).map_err(err)
 }
 
 #[derive(Serialize)]
@@ -278,7 +300,7 @@ struct DemoResult {
 
 #[tauri::command]
 fn dev_seed_demo(state: State<'_, AppState>) -> CmdResult<DemoResult> {
-    let mut guard = state.campaign.lock().map_err(err)?;
+    let mut guard = relock(&state.campaign);
     let db = guard.as_mut().ok_or("no_campaign")?;
     let demo = devtools::seed_demo(db).map_err(err)?;
     Ok(DemoResult { demo, campaign: db.summary().map_err(err)? })
@@ -295,7 +317,7 @@ fn dev_create_demo_campaign(state: State<'_, AppState>, folder: String) -> CmdRe
 }
 
 fn with_campaign<T>(state: &AppState, f: impl FnOnce(&CampaignDb) -> Result<T, chronicle_db::DbError>) -> CmdResult<T> {
-    let guard = state.campaign.lock().map_err(err)?;
+    let guard = relock(&state.campaign);
     f(guard.as_ref().ok_or("no_campaign")?).map_err(err)
 }
 
@@ -370,7 +392,7 @@ fn bridge_commit(
     seed: u64,
 ) -> CmdResult<usize> {
     let r = chronicle_bridge::run(&civ, seed).map_err(err)?;
-    let guard = state.campaign.lock().map_err(err)?;
+    let guard = relock(&state.campaign);
     let db = guard.as_ref().ok_or("no_campaign")?;
     db.backup(BackupKind::Transition, "modern era bridge").map_err(err)?;
     let step = chronicle_bridge::BridgeConfig::builtin().step_years;
@@ -519,9 +541,22 @@ async fn import_ck3_save(app: tauri::AppHandle, path: String) -> CmdResult<Ck3Im
             other => other.to_string(),
         })?;
         let state = app.state::<AppState>();
-        let mut guard = state.campaign.lock().map_err(err)?;
+        let mut guard = relock(&state.campaign);
         let db = guard.as_mut().ok_or("no_campaign")?;
-        let report = chronicle_ck3::import_world(db, &world, &save).map_err(err)?;
+        // A bug in the importer must not take the app down or poison the campaign lock.
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| chronicle_ck3::import_world(db, &world, &save)));
+        let report = match outcome {
+            Ok(r) => r.map_err(err)?,
+            Err(panic) => {
+                db.rollback_bulk();
+                let msg = panic
+                    .downcast_ref::<String>()
+                    .cloned()
+                    .or_else(|| panic.downcast_ref::<&str>().map(|s| s.to_string()))
+                    .unwrap_or_else(|| "unknown".into());
+                return Err(format!("internal error during import: {msg}"));
+            }
+        };
         let campaign = db.summary().map_err(err)?;
         Ok(Ck3Import { report, campaign })
     })
@@ -632,6 +667,7 @@ fn main() {
             link_game_folder,
             link_save_folder,
             reset_game_detection,
+            list_saves,
             steam_log,
             open_folder,
             launch_game,

@@ -100,6 +100,9 @@ pub struct GameDef {
     /// Save-format capabilities of this Chronicle version's adapter.
     #[serde(default)]
     pub save_formats: BTreeMap<SaveFormat, FormatSupport>,
+    /// File extensions of this game's saves, e.g. [".ck3"].
+    #[serde(default)]
+    pub save_extensions: Vec<String>,
 }
 
 impl GameDef {
@@ -251,6 +254,7 @@ mod tests {
         assert_eq!(ck3.format_support(SaveFormat::Binary), FormatSupport::Unsupported);
         assert_eq!(r.game("hoi4").unwrap().format_support(SaveFormat::Binary), FormatSupport::Unsupported);
         assert_eq!(r.game("eu5").unwrap().format_support(SaveFormat::Binary), FormatSupport::Planned);
+        assert_eq!(ck3.save_extensions, [".ck3"]);
     }
 
     #[test]

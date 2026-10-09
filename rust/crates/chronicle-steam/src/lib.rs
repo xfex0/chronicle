@@ -9,5 +9,5 @@ pub mod locate;
 pub mod vdf;
 
 pub use chronicle_core::InstallSource;
-pub use detect::{Detection, FingerprintResult, detect_all, find_save_dir, verify_install_dir};
+pub use detect::{Detection, FingerprintResult, SaveFileInfo, detect_all, find_save_dir, list_save_files, verify_install_dir};
 pub use locate::{SteamInstall, find_steam};

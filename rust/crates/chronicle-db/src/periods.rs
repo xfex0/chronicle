@@ -134,7 +134,7 @@ impl CampaignDb {
         game: &str,
         source: &str,
     ) -> Result<()> {
-        let tx = self.conn_mut().transaction()?;
+        let tx = self.conn_mut().savepoint()?; // nests inside bulk imports
         let open: Option<OpenOwnership> = tx
             .query_row(
                 "SELECT id, owner_id, from_year, from_month, from_day FROM territory_ownership
@@ -225,7 +225,7 @@ impl CampaignDb {
         game: &str,
         source: &str,
     ) -> Result<()> {
-        let tx = self.conn_mut().transaction()?;
+        let tx = self.conn_mut().savepoint()?; // nests inside bulk imports
         let open: Option<OpenPeriod> = tx
             .query_row(
                 "SELECT id, value, value_entity_id, from_year, from_month, from_day FROM entity_periods

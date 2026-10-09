@@ -292,6 +292,13 @@ export const en = {
   "imp.unverified": "This CK3 version's save layout is not verified yet: derived values are waiting for your review.",
   "err.ck3_binary": "This CK3 save is binary (ironman). Use a normal (non-ironman) save.",
 
+  "saves.found": "Saves in this folder: {n}",
+  "saves.none": "No save files ({ext}) in this folder. Note: the folder picker shows folders only, files are hidden there.",
+  "saves.import": "Import",
+  "saves.needCampaign": "Create or open a campaign on the Campaign screen to import a save.",
+
+  "imp.elapsed": "{s} s. Large saves take up to a minute; you can keep using the app.",
+
   "err.name_required": "Enter a campaign name.",
   "err.folder_not_found": "That folder does not exist.",
   "err.no_campaign": "No campaign is open.",

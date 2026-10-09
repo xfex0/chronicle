@@ -15,6 +15,7 @@ export interface GameDef {
   era: { start: string; end: string | null };
   era_verified: boolean;
   save_formats: Partial<Record<SaveFormat, FormatSupport>>;
+  save_extensions: string[];
 }
 
 export interface TransitionDef {
@@ -232,3 +233,5 @@ export interface Ck3ImportReport {
   player_realm: string | null; stored_copy: string; snapshot_id: number; warnings: string[];
 }
 export interface Ck3Import { report: Ck3ImportReport; campaign: CampaignSummary }
+
+export interface SaveFileInfo { path: string; name: string; size: number; modified: number }

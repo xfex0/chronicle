@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
 import type { CampaignSummary, Ck3ImportReport, SaveInfo } from "../api/types";
@@ -122,6 +122,13 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
   const [inspect, setInspect] = useState<SaveInfo | null>(null);
   const [report, setReport] = useState<Ck3ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  useEffect(() => {
+    if (!importing) return;
+    setSeconds(0);
+    const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [importing]);
 
   async function importCk3() {
     const p = await backend.pickFile();
@@ -196,6 +203,7 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
       <p className="hint">{t("imp.hint")}</p>
       <div className="actions">
         <button className="primary" onClick={importCk3} disabled={importing}>{importing ? t("imp.running") : t("imp.pick")}</button>
+        {importing && <span className="hint">{t("imp.elapsed", { s: seconds })}</span>}
       </div>
       {report && (
         <div className="notice">

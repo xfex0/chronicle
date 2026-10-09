@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { GameDef, InstallationRow, SteamInstall } from "../api/types";
+import type { GameDef, InstallationRow, SaveFileInfo, SteamInstall } from "../api/types";
 import { errorText, useI18n, type Key } from "../i18n";
 
 export function Games({ app }: { app: AppData }) {
@@ -65,8 +65,31 @@ function GameCard({ game, row, app, run }: {
   app: AppData;
   run: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 }) {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const installed = !!row && row.source !== "missing" && !!row.install_path;
+  const [saves, setSaves] = useState<SaveFileInfo[] | null>(null);
+  const [importing, setImporting] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!row?.save_path) {
+      setSaves(null);
+      return;
+    }
+    backend.listSaves(game.key).then(setSaves).catch(() => setSaves([]));
+  }, [row?.save_path, game.key]);
+
+  async function importSave(path: string) {
+    setImporting(path);
+    const r = await run(() => backend.importCk3(path));
+    setImporting(null);
+    if (r) {
+      app.setCampaign(r.campaign);
+      app.notify(t("imp.done", { realms: r.report.realms, counties: r.report.counties, rulers: r.report.rulers,
+        events: r.report.events_added, date: r.report.date ?? "?" }));
+    }
+  }
+
+  const when = (s: number) => new Date(s * 1000).toLocaleString(lang === "uk" ? "uk-UA" : "en-GB", { dateStyle: "medium", timeStyle: "short" });
 
   async function chooseGame() {
     const p = await backend.pickFolder();
@@ -106,6 +129,27 @@ function GameCard({ game, row, app, run }: {
         <dt>{t("games.adapter")}</dt>
         <dd>{t(`adapter.${game.status}` as Key)}</dd>
       </dl>
+      {saves !== null && (
+        <div className="saves">
+          <p className="saves-title">{saves.length === 0 ? t("saves.none", { ext: game.save_extensions.join(", ") }) : t("saves.found", { n: saves.length })}</p>
+          {saves.length > 0 && (
+            <ul className="saves-list">
+              {saves.slice(0, 5).map((s) => (
+                <li key={s.path}>
+                  <span className="save-name" title={s.path}>{s.name}</span>
+                  <span className="muted">{when(s.modified)}, {(s.size / 1e6).toFixed(1)} MB</span>
+                  {game.key === "ck3" && (
+                    <button onClick={() => importSave(s.path)} disabled={!app.boot.current_campaign || importing !== null}>
+                      {importing === s.path ? t("imp.running") : t("saves.import")}
+                    </button>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+          {game.key === "ck3" && !app.boot.current_campaign && saves.length > 0 && <p className="hint">{t("saves.needCampaign")}</p>}
+        </div>
+      )}
       <div className="actions compact">
         {installed && game.steam_app_id && row?.source === "steam" && (
           <button className="primary" onClick={() => run(() => backend.launchGame(game.key))}>{t("games.play")}</button>

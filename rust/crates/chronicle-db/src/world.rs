@@ -267,9 +267,13 @@ impl CampaignDb {
         Ok(())
     }
 
-    /// Group many writes into one transaction (much faster for bulk imports).
-    /// Do not call period setters (`set_owner`, `set_period`) inside: they open their own.
+    /// Group many writes into one transaction (much faster for bulk imports: one disk flush
+    /// instead of thousands). Period setters and id allocation use savepoints, so they nest.
     pub fn begin_bulk(&self) -> Result<()> {
+        // A transaction left open by an earlier failure would block this one: undo it.
+        if !self.conn().is_autocommit() {
+            self.conn().execute_batch("ROLLBACK")?;
+        }
         self.conn().execute_batch("BEGIN")?;
         Ok(())
     }
@@ -289,6 +293,25 @@ mod tests {
     use super::*;
     use chronicle_core::CampaignSettings;
     use chronicle_core::registry::GameRegistry;
+
+    #[test]
+    fn periods_and_ids_nest_inside_bulk_transaction() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = CampaignDb::create(&tmp.path().join("c"), "x", &CampaignSettings::new("ck3", 1),
+                                        &GameRegistry::builtin().unwrap()).unwrap();
+        db.begin_bulk().unwrap();
+        let t = db.next_id(EntityKind::Territory).unwrap();
+        let c = db.next_id(EntityKind::Country).unwrap();
+        db.set_owner(&t, Some(&c), PartialDate::year(900), "ck3", "save").unwrap();
+        db.commit_bulk().unwrap();
+        assert!(db.owner_at(t.as_str(), PartialDate::year(901)).unwrap().is_some());
+
+        db.begin_bulk().unwrap();
+        let lost = db.next_id(EntityKind::Country).unwrap();
+        db.rollback_bulk();
+        let n: i64 = db.conn().query_row("SELECT COUNT(*) FROM entities WHERE id = ?1", [lost.as_str()], |r| r.get(0)).unwrap();
+        assert_eq!(n, 0, "rollback undoes everything in the bulk transaction");
+    }
 
     #[test]
     fn entity_ids_are_stable_per_game_id() {

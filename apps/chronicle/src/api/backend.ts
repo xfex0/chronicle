@@ -4,7 +4,7 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, StellarisCompare, StellarisVocabulary,
+  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, SaveFileInfo, StellarisCompare, StellarisVocabulary,
 } from "./types";
 import { mockBootstrap, mockBridge, mockDev, mockEvents } from "./mock";
 
@@ -39,6 +39,9 @@ export const backend = {
     call<InstallationRow[]>("link_game_folder", { game, path }, () => mockBootstrap().installations),
   linkSaveFolder: (game: string, path: string) =>
     call<InstallationRow[]>("link_save_folder", { game, path }, () => mockBootstrap().installations),
+  listSaves: (game: string) =>
+    call<SaveFileInfo[]>("list_saves", { game }, () =>
+      game === "ck3" ? [{ path: "C:/Users/me/Downloads/Sobstvennyj_stsenarij_na_923.ck3", name: "Sobstvennyj_stsenarij_na_923.ck3", size: 12106161, modified: 1791580000 }] : []),
   resetDetection: (game: string) => call<void>("reset_game_detection", { game }, () => undefined),
   steamLog: () => call<string[]>("steam_log", {}, () => ["✓ candidate root: C:/Program Files (x86)/Steam"]),
   openFolder: (path: string) => call<void>("open_folder", { path }, () => undefined),
