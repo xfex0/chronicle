@@ -146,6 +146,21 @@ th { font-weight: 500; }
 .journal-row.is-inferred .journal-date, .pill.is-inferred { color: var(--ochre); }
 .pill.is-inferred { margin-left: 8px; text-transform: none; }
 
+/* Modern Era Bridge */
+.bridge-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 0 28px; }
+.empire { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+.empire-part { background: var(--sheet); border: 1px solid var(--rule); border-radius: 8px; padding: 14px 16px; }
+.empire-part .eyebrow { margin: 0; }
+.empire-choice { font-family: var(--serif); font-size: 1.25rem; margin: 2px 0 6px; line-height: 1.25; }
+.empire-part .reasons { margin: 6px 0 0; padding-left: 16px; font-size: 0.85rem; }
+.pill.review-auto { color: var(--verdigris); }
+.pill.review-warning { color: var(--ochre); }
+.pill.review-pending_review { color: var(--madder); }
+.journal-row.is-alarm .journal-date, .journal-row.is-alarm .journal-type { color: var(--madder); }
+.delta { color: var(--ink-soft); text-align: center; }
+.delta.up { color: var(--verdigris); }
+.delta.down { color: var(--madder); }
+
 /* Developer mode */
 .row.wrap { flex-wrap: wrap; align-items: center; gap: 12px; }
 .inline-field input.short { width: 7rem; padding: 6px 8px; border: 1px solid var(--rule); border-radius: 4px; background: var(--sheet); }

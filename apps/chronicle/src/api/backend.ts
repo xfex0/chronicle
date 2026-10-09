@@ -4,8 +4,9 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
+  BridgeResult, CivilizationState, StellarisVocabulary,
 } from "./types";
-import { mockBootstrap, mockDev, mockEvents } from "./mock";
+import { mockBootstrap, mockBridge, mockDev, mockEvents } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -71,6 +72,15 @@ export const backend = {
   devPeriods: (entity: string, aspect: string | null) =>
     call<Period[]>("dev_periods", { entity, aspect }, () => mockDev.periods(entity)),
   devQuery: (sql: string) => call<QueryResult>("dev_query", { sql }, () => mockDev.query(sql)),
+
+  // Modern Era Bridge
+  bridgePresets: () => call<[string, CivilizationState][]>("bridge_presets", {}, mockBridge.presets),
+  bridgeRun: (state: CivilizationState, seed: number) =>
+    call<BridgeResult>("bridge_run", { state, seed }, () => mockBridge.result(state, seed)),
+  bridgeCommit: (civ: CivilizationState, seed: number) => call<number>("bridge_commit", { civ, seed }, () => 7),
+  bridgeExport: (civ: CivilizationState, seed: number, folder: string, language: Language) =>
+    call<string>("bridge_export", { civ, seed, folder, language }, () => `${folder}/chronicle_stellaris_empire_${seed}.md`),
+  bridgeVocabulary: () => call<StellarisVocabulary>("bridge_vocabulary", {}, mockBridge.vocabulary),
 
   pickFolder: () => pick(true),
   pickFile: () => pick(false),

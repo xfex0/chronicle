@@ -1,0 +1,21 @@
+# What the future HoI4 adapter must extract to feed the Modern Era Bridge.
+# `save_path` stays null until confirmed on real HoI4 saves (never guessed).
+# Until then the bridge takes these indicators from the Semantic Registry or manual input.
+
+version: 1
+signals:
+  authoritarianism:          { from: "ruling party ideology + election laws across major powers", save_path: null }
+  social_equality:           { from: "conscription/economy laws, ideology", save_path: null }
+  xenophobia:                { from: "ideology (fascism ↑), faction exclusivity", save_path: null }
+  international_cooperation: { from: "faction membership, guarantees, peace deals", save_path: null }
+  religious_influence:       { from: "carried from earlier eras (Victoria 3 / EU5 semantics)", save_path: null }
+  militarism:                { from: "military factories share, army size, war support", save_path: null }
+  global_wars:               { from: "active wars and casualties at campaign end", save_path: null }
+  nuclear_weapons:           { from: "nukes stockpile, nuclear technology spread", save_path: null }
+  industrialization:         { from: "civilian + military factories per state", save_path: null }
+  technology:                { from: "researched technologies vs the 1948 tree", save_path: null }
+  space_program:             { from: "rocketry / jet research, 'space' techs where present", save_path: null }
+  economic_planning:         { from: "economy laws, communist share", save_path: null }
+  environmental_policy:      { from: "carried from Victoria 3 semantics if present", save_path: null }
+  planetary_unification:     { from: "share of world industry/population in the largest faction", save_path: null }
+  blocs:                     { from: "number of factions with ≥10% of world industry", save_path: null }

@@ -1,0 +1,53 @@
+# Stellaris vocabulary used by the Modern Era Bridge.
+# Display names are the in-game names. `key` values follow the game's naming pattern but are
+# UNVERIFIED until checked against the game files (verified: false). Requirements reflect the
+# empire designer rules as known; the in-game designer is the final authority.
+# Scope: base-game concepts plus a few DLC civics (marked dlc).
+
+version: 1
+verified: false
+
+authorities:
+  democratic: { name: "Democratic", key: auth_democratic, forbids_ethics: [authoritarian, fanatic_authoritarian] }
+  oligarchic: { name: "Oligarchic", key: auth_oligarchic, forbids_ethics: [] }
+  dictatorial: { name: "Dictatorial", key: auth_dictatorial, forbids_ethics: [egalitarian, fanatic_egalitarian] }
+  imperial: { name: "Imperial", key: auth_imperial, forbids_ethics: [egalitarian, fanatic_egalitarian] }
+
+ethics:
+  authoritarian: { name: "Authoritarian", opposite: egalitarian }
+  egalitarian:   { name: "Egalitarian", opposite: authoritarian }
+  xenophobe:     { name: "Xenophobe", opposite: xenophile }
+  xenophile:     { name: "Xenophile", opposite: xenophobe }
+  militarist:    { name: "Militarist", opposite: pacifist }
+  pacifist:      { name: "Pacifist", opposite: militarist }
+  spiritualist:  { name: "Spiritualist", opposite: materialist }
+  materialist:   { name: "Materialist", opposite: spiritualist }
+
+# requires_ethics: ALL of these must be chosen (normal or fanatic)
+# forbids_ethics: none of these may be chosen (normal or fanatic)
+# authorities: allowed authorities (empty = any)
+civics:
+  technocracy:             { name: "Technocracy" }
+  beacon_of_liberty:       { name: "Beacon of Liberty", authorities: [democratic], requires_ethics: [egalitarian] }
+  parliamentary_system:    { name: "Parliamentary System", authorities: [democratic] }
+  idealistic_foundation:   { name: "Idealistic Foundation", requires_ethics: [egalitarian] }
+  distinguished_admiralty: { name: "Distinguished Admiralty" }
+  nationalistic_zeal:      { name: "Nationalistic Zeal", requires_ethics: [militarist] }
+  citizen_service:         { name: "Citizen Service", authorities: [democratic, oligarchic], requires_ethics: [militarist] }
+  police_state:            { name: "Police State", forbids_ethics: [egalitarian] }
+  imperial_cult:           { name: "Imperial Cult", authorities: [imperial], requires_ethics: [authoritarian, spiritualist] }
+  exalted_priesthood:      { name: "Exalted Priesthood", authorities: [oligarchic, dictatorial], requires_ethics: [spiritualist] }
+  mining_guilds:           { name: "Mining Guilds" }
+  agrarian_idyll:          { name: "Agrarian Idyll", requires_ethics: [pacifist] }
+  inward_perfection:       { name: "Inward Perfection", requires_ethics: [pacifist, xenophobe] }
+  free_haven:              { name: "Free Haven", requires_ethics: [xenophile], dlc: true }
+  aristocratic_elite:      { name: "Aristocratic Elite", authorities: [oligarchic, imperial], forbids_ethics: [egalitarian] }
+  environmentalist:        { name: "Environmentalist" }
+  corvee_system:           { name: "Corvée System", forbids_ethics: [egalitarian] }
+  diplomatic_corps:        { name: "Diplomatic Corps", forbids_ethics: [xenophobe] }
+
+origins:
+  prosperous_unification: { name: "Prosperous Unification", key: origin_default }
+  post_apocalyptic:       { name: "Post-Apocalyptic", key: origin_post_apocalyptic, dlc: true }
+  doomsday:               { name: "Doomsday", key: origin_doomsday, dlc: true }
+  mechanists:             { name: "Mechanists", key: origin_mechanists, requires_ethics: [materialist] }

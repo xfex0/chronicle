@@ -1,6 +1,6 @@
 // Browser-only demo data (npm run dev). Never shipped behaviour: the desktop build uses Rust.
 
-import type { Bootstrap, Check, DemoResult, EntityLabel, EventRow, OwnershipPeriod, Period, QueryResult } from "./types";
+import type { Bootstrap, BridgeResult, Check, CivilizationState, DemoResult, EntityLabel, EventRow, OwnershipPeriod, Period, QueryResult, StellarisVocabulary } from "./types";
 
 const registry: Bootstrap["registry"] = {
   version: 1,
@@ -88,4 +88,44 @@ export const mockDev = {
     { entity_id: entity, aspect: "dynasty", value: null, value_entity_id: "chronicle_dynasty_000001", from: "1021.6.1", to: null, game: "ck3", source: "demo" },
   ],
   query: (sql: string): QueryResult => ({ columns: ["sql"], rows: [[sql]], truncated: false }),
+};
+
+const democracy: CivilizationState = {
+  blocs: 1, ideology: "democracy", known_indicators: 14,
+  values: {
+    authoritarianism: 0.1, social_equality: 0.9, xenophobia: 0.1, international_cooperation: 0.9, religious_influence: 0.2,
+    militarism: 0.2, global_wars: 0.05, nuclear_weapons: 0.4, industrialization: 0.7, technology: 0.6, space_program: 0.1,
+    economic_planning: 0.3, environmental_policy: 0.6, planetary_unification: 0.5,
+  },
+};
+
+export const mockBridge = {
+  presets: (): [string, CivilizationState][] => [["global_democracy", democracy]],
+  vocabulary: (): StellarisVocabulary => ({
+    verified: false,
+    authorities: { democratic: "Democratic", oligarchic: "Oligarchic", dictatorial: "Dictatorial", imperial: "Imperial" },
+    ethics: { egalitarian: "Egalitarian", xenophile: "Xenophile", materialist: "Materialist", authoritarian: "Authoritarian",
+      xenophobe: "Xenophobe", militarist: "Militarist", pacifist: "Pacifist", spiritualist: "Spiritualist" },
+    civics: { beacon_of_liberty: "Beacon of Liberty", technocracy: "Technocracy" },
+    origins: { prosperous_unification: "Prosperous Unification" },
+  }),
+  result: (state: CivilizationState, seed: number): BridgeResult => ({
+    seed, start: state, problems: [],
+    run: {
+      final_state: state, flags: ["climate_crisis", "earth_unified"], history: [],
+      events: [{ year: 1978, kind: "space_orbit" }, { year: 2018, kind: "space_moon" }, { year: 2028, kind: "climate_crisis" },
+        { year: 2078, kind: "space_mars" }, { year: 2088, kind: "earth_unified" }, { year: 2188, kind: "space_interstellar" }],
+    },
+    design: {
+      authority: "democratic", ethics: ["egalitarian", "xenophile", "materialist"], civics: ["beacon_of_liberty", "technocracy"],
+      origin: "prosperous_unification", vocabulary_verified: false,
+      axes: { authoritarian_egalitarian: -0.8, xenophobe_xenophile: -0.78, militarist_pacifist: -0.24, spiritualist_materialist: -0.76 },
+      decisions: [
+        { part: "authority", choice: ["democratic"], reasons: [{ code: "authority.democratic", value: 0.18, detail: null }], alternative: null, confidence: 0.8, review_state: "auto" },
+        { part: "ethics", choice: ["egalitarian", "xenophile", "materialist"], reasons: [{ code: "ethic.axis", value: -0.8, detail: "authoritarian_egalitarian" }], alternative: null, confidence: 0.75, review_state: "warning" },
+        { part: "civics", choice: ["beacon_of_liberty", "technocracy"], reasons: [{ code: "civic.score", value: 0.83, detail: "beacon_of_liberty" }], alternative: null, confidence: 0.6, review_state: "warning" },
+        { part: "origin", choice: ["prosperous_unification"], reasons: [{ code: "origin.default", value: null, detail: null }], alternative: null, confidence: 0.7, review_state: "warning" },
+      ],
+    },
+  }),
 };

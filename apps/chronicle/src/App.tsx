@@ -8,9 +8,10 @@ import { Campaign } from "./screens/Campaign";
 import { Timeline } from "./screens/Timeline";
 import { Settings } from "./screens/Settings";
 import { Developer } from "./screens/Developer";
+import { Bridge } from "./screens/Bridge";
 
-export type Screen = "dashboard" | "games" | "campaign" | "timeline" | "settings" | "developer";
-const NAV: Screen[] = ["dashboard", "games", "campaign", "timeline", "settings"];
+export type Screen = "dashboard" | "games" | "campaign" | "timeline" | "bridge" | "settings" | "developer";
+const NAV: Screen[] = ["dashboard", "games", "campaign", "timeline", "bridge", "settings"];
 
 export interface AppData {
   boot: Bootstrap;
@@ -100,6 +101,7 @@ export function App() {
           {screen === "timeline" && <Timeline app={data} />}
           {screen === "settings" && <Settings app={data} lang={lang} onLanguage={changeLanguage} />}
           {screen === "developer" && boot.dev_mode && <Developer app={data} />}
+          {screen === "bridge" && <Bridge app={data} />}
         </main>
         {toast && (
           <div className={`toast is-${toast.kind}`} role={toast.kind === "error" ? "alert" : "status"}>

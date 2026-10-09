@@ -15,6 +15,7 @@ chronicle-db = { path = "crates/chronicle-db" }
 chronicle-steam = { path = "crates/chronicle-steam" }
 chronicle-rng = { path = "crates/chronicle-rng" }
 chronicle-devtools = { path = "crates/chronicle-devtools" }
+chronicle-bridge = { path = "crates/chronicle-bridge" }
 geocore = { path = "crates/geocore" }
 
 serde = { version = "1", features = ["derive"] }

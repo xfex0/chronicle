@@ -1,0 +1,83 @@
+# Modern Era Bridge — balance lives here, not in code.
+# The bridge simulates the gap between the end of a HoI4 campaign and the Stellaris start,
+# then maps the resulting civilization of Earth to a Stellaris empire design.
+# All indicators are 0..1. Simulation is deterministic for a given seed.
+
+version: 1
+start_year: 1948
+end_year: 2200
+step_years: 10
+
+drift:
+  technology: 0.06               # per step, share of the remaining gap to 1.0 closed
+  industrialization: 0.05
+  space_from_technology: 0.07    # space program growth × technology
+  space_race_bonus: 0.3          # extra space growth while several blocs compete
+  space_cooperation_bonus: 0.3   # extra space growth with cooperation
+  mean_reversion: 0.005          # social indicators drift slowly toward 0.5 (societies keep identity)
+  noise: 0.015                   # ± uniform random walk on social indicators
+  wars_relaxation: 0.3           # global_wars moves toward its target each step
+  wars_target_militarism: 0.8    # target = militarism × (1 - cooperation) × this
+  unification_from_cooperation: 0.12
+
+events:
+  nuclear_war:
+    base: 0.12                   # p = base × nuclear_weapons × (1 - cooperation) × tension
+    effects: { technology: -0.25, industrialization: -0.35, militarism: 0.15, international_cooperation: 0.2, nuclear_weapons: -0.4, global_wars: 0.3 }
+  climate_crisis:
+    min_industrialization: 0.6
+    base: 0.10                   # p = base × industrialization × (1 - environmental_policy)
+    collapse_below_environment: 0.25   # a crisis with weaker environmental policy = ecological collapse
+    effects: { environmental_policy: 0.3, industrialization: -0.1 }
+  conquest:
+    min_militarism: 0.7
+    base: 0.08                   # p = base × militarism × (1 - cooperation), needs 2+ blocs
+    effects: { planetary_unification: 0.25, authoritarianism: 0.1, global_wars: 0.2 }
+  peaceful_merge:
+    min_cooperation: 0.6
+    base: 0.15                   # p = base × cooperation, needs 2+ blocs
+    effects: { planetary_unification: 0.15 }
+  unified_at: 0.9                # planetary_unification reaching this ⇒ "Earth unified"
+
+space_milestones:                # space_program thresholds → journal events (checked in this order)
+  - { name: orbit, at: 0.25 }
+  - { name: moon, at: 0.45 }
+  - { name: mars, at: 0.65 }
+  - { name: interstellar, at: 0.85 }
+
+stellaris:
+  fanatic_threshold: 0.85        # strongest ethic axis at/above → fanatic (2 points)
+  democratic_min: 0.6            # 1 - authoritarianism
+  dictatorial_min: 0.65          # authoritarianism
+  imperial_min: 0.5              # authoritarianism, with a monarchy ideology
+  mechanists_automation_min: 0.7 # technology × industrialization × (0.5 + 0.5 × economic_planning)
+  close_call_margin: 0.05        # smaller margin ⇒ the runner-up is shown as an alternative
+  mapping_reliability: { authority: 0.8, ethics: 0.75, civics: 0.6, origin: 0.7 }
+
+# Axis scores in [-1, 1]; positive = first ethic of the pair.
+axes:
+  authoritarian_egalitarian: { authoritarianism: 1.0, social_equality: -1.0 }
+  xenophobe_xenophile:       { xenophobia: 1.0, international_cooperation: -1.0 }
+  militarist_pacifist:       { militarism: 1.4, global_wars: 0.3, constant: -0.7 }
+  spiritualist_materialist:  { religious_influence: 2.0, technology: -0.6, constant: -0.6 }
+
+# Civic scores (weighted sums of indicators); requirements live in the Stellaris vocabulary.
+civic_scores:
+  technocracy:             { technology: 0.3, space_program: 0.2, religious_influence: -0.2, international_cooperation: 0.2, constant: 0.2 }
+  beacon_of_liberty:       { authoritarianism: -0.5, social_equality: 0.5, constant: 0.5 }
+  parliamentary_system:    { authoritarianism: -0.6, international_cooperation: 0.2, constant: 0.6 }
+  idealistic_foundation:   { social_equality: 0.6, international_cooperation: 0.2 }
+  distinguished_admiralty: { militarism: 0.6, global_wars: 0.2, space_program: 0.2 }
+  nationalistic_zeal:      { militarism: 0.45, xenophobia: 0.45 }
+  citizen_service:         { militarism: 0.5, authoritarianism: -0.3, constant: 0.3 }
+  police_state:            { authoritarianism: 0.5, social_equality: -0.3, constant: 0.3 }
+  imperial_cult:           { religious_influence: 0.4, authoritarianism: 0.4 }
+  exalted_priesthood:      { religious_influence: 0.7 }
+  mining_guilds:           { industrialization: 0.6 }
+  agrarian_idyll:          { industrialization: -0.4, environmental_policy: 0.4, constant: 0.4 }
+  inward_perfection:       { xenophobia: 0.4, militarism: -0.4, constant: 0.4 }
+  free_haven:              { international_cooperation: 0.4, xenophobia: -0.4, constant: 0.4 }
+  aristocratic_elite:      { social_equality: -0.5, authoritarianism: 0.2, constant: 0.5 }
+  environmentalist:        { environmental_policy: 0.7 }
+  corvee_system:           { social_equality: -0.4, economic_planning: 0.3, constant: 0.4 }
+  diplomatic_corps:        { international_cooperation: 0.6 }

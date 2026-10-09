@@ -31,6 +31,7 @@ cargo run -p chronicle-devtools -- sql ../demo-campaign "SELECT * FROM entity_pe
 cargo run -p chronicle-devtools -- steam       # real Steam detection on this PC
 cargo run -p chronicle-devtools -- registry    # transition dates, alternatives, custom-start support
 cargo run -p chronicle-devtools -- backups ../demo-campaign
+cargo run -p chronicle-devtools -- bridge military_dictatorship 45819283   # HoI4 → Stellaris
 ```
 
 The demo + self-test also run in CI on Windows and Linux, and before every installer build.

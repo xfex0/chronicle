@@ -339,6 +339,127 @@ fn dev_query(state: State<'_, AppState>, sql: String) -> CmdResult<QueryResult> 
     with_campaign(&state, |db| devtools::readonly_query(db, &sql, 500))
 }
 
+// ---------------------------------------------------------------- Modern Era Bridge (HoI4 → Stellaris)
+
+#[tauri::command]
+fn bridge_presets() -> Vec<(String, chronicle_bridge::CivilizationState)> {
+    chronicle_bridge::presets().into_iter().map(|(n, s)| (n.to_string(), s)).collect()
+}
+
+#[tauri::command]
+async fn bridge_run(state: chronicle_bridge::CivilizationState, seed: u64) -> CmdResult<chronicle_bridge::BridgeResult> {
+    tauri::async_runtime::spawn_blocking(move || chronicle_bridge::run(&state, seed).map_err(err))
+        .await
+        .map_err(err)?
+}
+
+fn bridge_importance(kind: &str) -> u8 {
+    match kind {
+        "nuclear_war" | "ecological_collapse" | "earth_unified" => 5,
+        "conquest" | "space_interstellar" => 4,
+        _ => 3,
+    }
+}
+
+/// Write the simulated 1948–2200 history into the open campaign's journal. The run is redone
+/// here from (state, seed) — the frontend never sends results the backend has to trust.
+#[tauri::command]
+fn bridge_commit(
+    state: State<'_, AppState>,
+    civ: chronicle_bridge::CivilizationState,
+    seed: u64,
+) -> CmdResult<usize> {
+    let r = chronicle_bridge::run(&civ, seed).map_err(err)?;
+    let guard = state.campaign.lock().map_err(err)?;
+    let db = guard.as_ref().ok_or("no_campaign")?;
+    db.backup(BackupKind::Transition, "modern era bridge").map_err(err)?;
+    let step = chronicle_bridge::BridgeConfig::builtin().step_years;
+    for e in &r.run.events {
+        db.add_event(&chronicle_db::NewEvent {
+            date_to: Some(PartialDate::year(e.year + step - 1)),
+            game_version: Some(chronicle_core::CHRONICLE_VERSION),
+            payload: serde_json::json!({ "simulated": true, "seed": seed }),
+            importance: bridge_importance(&e.kind),
+            ..chronicle_db::NewEvent::simple(PartialDate::year(e.year), "modern_bridge", &e.kind, chronicle_core::EventOrigin::Converter)
+        })
+        .map_err(err)?;
+    }
+    db.add_event(&chronicle_db::NewEvent {
+        payload: serde_json::json!({ "simulated": true, "seed": seed, "design": &r.design }),
+        importance: 5,
+        ..chronicle_db::NewEvent::simple(PartialDate::ymd(2200, 1, 1), "stellaris", "stellaris_empire_designed", chronicle_core::EventOrigin::Converter)
+    })
+    .map_err(err)?;
+    Ok(r.run.events.len() + 1)
+}
+
+fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
+    let v = chronicle_bridge::Vocabulary::builtin();
+    let d = &r.design;
+    let ethic_name = |e: &str| -> String {
+        let base = e.trim_start_matches("fanatic_");
+        let name = v.ethics.get(base).map(|x| x.name.clone()).unwrap_or_else(|| base.to_string());
+        if e.starts_with("fanatic_") { format!("Fanatic {name}") } else { name }
+    };
+    let (t_title, t_auth, t_eth, t_civ, t_org, t_hist, t_conf, t_how, t_note) = if uk {
+        ("Імперія Землі для Stellaris", "Влада", "Етика", "Цивіки", "Походження", "Історія 1948–2200 (симуляція)",
+         "Впевненість", "Створіть цю імперію в конструкторі імперій Stellaris.",
+         "Ключі Stellaris ще не звірені з файлами гри; остаточну перевірку робить конструктор у грі.")
+    } else {
+        ("Earth empire for Stellaris", "Authority", "Ethics", "Civics", "Origin", "History 1948–2200 (simulated)",
+         "Confidence", "Create this empire in the Stellaris empire designer.",
+         "Stellaris keys are not yet verified against the game files; the in-game designer is the final check.")
+    };
+    let mut out = format!("# {t_title}\n\nseed {}\n\n", r.seed);
+    out += &format!("- **{t_auth}:** {}\n", v.authorities.get(&d.authority).map(|a| a.name.as_str()).unwrap_or(&d.authority));
+    out += &format!("- **{t_eth}:** {}\n", d.ethics.iter().map(|e| ethic_name(e)).collect::<Vec<_>>().join(", "));
+    out += &format!(
+        "- **{t_civ}:** {}\n",
+        d.civics.iter().map(|c| v.civics.get(c).map(|x| x.name.clone()).unwrap_or_else(|| c.clone())).collect::<Vec<_>>().join(", ")
+    );
+    out += &format!("- **{t_org}:** {}\n\n", v.origins.get(&d.origin).map(|o| o.name.as_str()).unwrap_or(&d.origin));
+    out += &format!("## {t_conf}\n\n");
+    for dec in &d.decisions {
+        out += &format!("- {}: {:.0}% ({})\n", dec.part, dec.confidence * 100.0, dec.review_state);
+    }
+    out += &format!("\n## {t_hist}\n\n");
+    for e in &r.run.events {
+        out += &format!("- {}s: {}\n", e.year, e.kind.replace('_', " "));
+    }
+    out += &format!("\n{t_how}\n\n_{t_note}_\n");
+    out
+}
+
+/// Save the design as JSON (machine-readable) and Markdown (a card to follow in the game).
+#[tauri::command]
+fn bridge_export(civ: chronicle_bridge::CivilizationState, seed: u64, folder: String, language: String) -> CmdResult<String> {
+    let r = chronicle_bridge::run(&civ, seed).map_err(err)?;
+    let dir = PathBuf::from(folder);
+    if !dir.is_dir() {
+        return Err("folder_not_found".into());
+    }
+    let json = dir.join(format!("chronicle_stellaris_empire_{seed}.json"));
+    let md = dir.join(format!("chronicle_stellaris_empire_{seed}.md"));
+    std::fs::write(&json, serde_json::to_string_pretty(&r).map_err(err)?).map_err(err)?;
+    std::fs::write(&md, empire_card(&r, language == "uk")).map_err(err)?;
+    Ok(md.display().to_string())
+}
+
+#[tauri::command]
+fn bridge_vocabulary() -> serde_json::Value {
+    let v = chronicle_bridge::Vocabulary::builtin();
+    let names = |m: Vec<(&String, &String)>| -> serde_json::Map<String, serde_json::Value> {
+        m.into_iter().map(|(k, n)| (k.clone(), serde_json::Value::String(n.clone()))).collect()
+    };
+    serde_json::json!({
+        "verified": v.verified,
+        "authorities": names(v.authorities.iter().map(|(k, a)| (k, &a.name)).collect()),
+        "ethics": names(v.ethics.iter().map(|(k, e)| (k, &e.name)).collect()),
+        "civics": names(v.civics.iter().map(|(k, c)| (k, &c.name)).collect()),
+        "origins": names(v.origins.iter().map(|(k, o)| (k, &o.name)).collect()),
+    })
+}
+
 // ---------------------------------------------------------------- save inspection
 
 #[derive(Serialize)]
@@ -455,7 +576,12 @@ fn main() {
             dev_owner_at,
             dev_ownership_history,
             dev_periods,
-            dev_query
+            dev_query,
+            bridge_presets,
+            bridge_run,
+            bridge_commit,
+            bridge_export,
+            bridge_vocabulary
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Chronicle");

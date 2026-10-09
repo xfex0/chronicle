@@ -26,7 +26,9 @@ const HELP: &str = "chronicle-dev <command>
   sql <folder> \"<SELECT ...>\"         read-only SQL
   steam                               detect Steam, libraries and supported games
   backups <folder>                    backup register (kind, path, time)
-  registry                            validated game registry and transition dates";
+  registry                            validated game registry and transition dates
+  bridge [preset] [seed]              Modern Era Bridge 1948→2200 and the Stellaris empire design
+                                      presets: global_democracy, military_dictatorship, cold_war, planned_technocracy";
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
@@ -155,6 +157,38 @@ fn run(args: &[String]) -> R {
         "backups" => {
             for (kind, path, at) in open(a(1)?)?.backups()? {
                 println!("{at}  {kind:<10} {path}");
+            }
+        }
+        "bridge" => {
+            let name = args.get(1).map(String::as_str).unwrap_or("global_democracy");
+            let seed: u64 = args.get(2).map(|s| s.parse()).transpose()?.unwrap_or(45_819_283);
+            let start = chronicle_bridge::presets()
+                .into_iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, s)| s)
+                .ok_or_else(|| format!("unknown preset {name}"))?;
+            let r = chronicle_bridge::run(&start, seed)?;
+            println!("Modern Era Bridge — preset {name}, seed {seed}");
+            for e in &r.run.events {
+                println!("  {}  {}", e.year, e.kind);
+            }
+            let d = &r.design;
+            println!("\nStellaris empire");
+            println!("  authority: {}", d.authority);
+            println!("  ethics:    {}", d.ethics.join(", "));
+            println!("  civics:    {}", d.civics.join(", "));
+            println!("  origin:    {}", d.origin);
+            for dec in &d.decisions {
+                println!(
+                    "  {:<9} confidence {:.0}% ({}){}",
+                    dec.part,
+                    dec.confidence * 100.0,
+                    dec.review_state,
+                    dec.alternative.as_ref().map(|a| format!(", close call: {a}")).unwrap_or_default()
+                );
+            }
+            if !r.problems.is_empty() {
+                return Err(format!("invalid design: {:?}", r.problems).into());
             }
         }
         "registry" => {

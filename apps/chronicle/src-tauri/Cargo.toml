@@ -20,4 +20,5 @@ serde_json = "1"
 chronicle-core = { path = "../../../rust/crates/chronicle-core" }
 chronicle-db = { path = "../../../rust/crates/chronicle-db" }
 chronicle-steam = { path = "../../../rust/crates/chronicle-steam" }
+chronicle-bridge = { path = "../../../rust/crates/chronicle-bridge" }
 paradox-parser = { path = "../../../rust/crates/paradox-parser" }

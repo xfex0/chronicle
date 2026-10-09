@@ -154,12 +154,45 @@ Control Points → Map Alignment → Province Crosswalk → Overlap Calculator.
 v0 uses the most detailed available map as canonical grid v1; the proof of concept covers one
 region (Britain first: clear coastline, easy control points; Italy second as a stress test).
 
-## 12. Developer mode
+## 12. Modern Era Bridge: HoI4 → Stellaris ✅ (prototype)
+
+Crate `chronicle-bridge`, screen **Bridge → Stellaris**, CLI `chronicle-dev bridge`.
+
+1. **Input — civilization of Earth at the end of HoI4**: 14 indicators (authoritarianism,
+   social equality, xenophobia, international cooperation, religious influence, militarism,
+   wars, nuclear weapons, industrialization, technology, space program, planned economy,
+   environmental policy, planetary unification) + number of power blocs + dominant ideology.
+   Today: manual input or presets. Later: the HoI4 adapter fills the same indicators through
+   the Semantic Registry (`games/hoi4/semantic_signals.yaml` lists what it must extract;
+   `CivilizationState::from_semantics` lowers data coverage for anything missing).
+2. **Simulation 1948 → 2200** in decades, deterministic per seed: technology/industry growth,
+   space race or cooperative space program, slow social drift, nuclear war (needs nukes,
+   rivalry and low cooperation), climate crisis or ecological collapse, conquest or peaceful
+   merging of blocs, space milestones, Earth unification.
+3. **Stellaris empire design**: authority, ethics (always exactly 3 points; fanatic when one
+   axis is very strong), 2 civics (best scoring allowed by the rules), origin
+   (Post-Apocalyptic after nuclear war, Doomsday after ecological collapse, Mechanists for a
+   highly automated planned economy, otherwise Prosperous Unification). Every decision carries
+   reasons, a close-call alternative and confidence (coverage × mapping reliability; the
+   bridge is speculative, so civics sit at 60 % and are flagged for review).
+4. **Output**: the timeline can be written into the campaign journal (origin `converter`,
+   payload `simulated: true`, range dates per decade; a transition backup is made first), and
+   an empire card (Markdown + JSON) is exported to recreate the empire in the Stellaris
+   designer. Automatic Stellaris mod generation waits for the Stellaris research phase.
+
+Balance: `config/bridge.yaml`. Rules and names: `games/stellaris/vocabulary.yaml`
+(`verified: false` until checked against the game files). The research twin
+`tools/research/mega_converter/era_bridge.py` produces bit-identical results; both test
+suites assert the spec examples (global democracy → Democratic, Egalitarian/Materialist/
+Xenophile, Technocracy + Beacon of Liberty, Prosperous Unification; military dictatorship →
+Dictatorial, Authoritarian/Militarist/Xenophobe, Distinguished Admiralty + Nationalistic Zeal).
+
+## 13. Developer mode
 
 See `DEVELOPER_MODE.md`: demo world, self-test, time queries, read-only SQL console, and the
 `chronicle-dev` command-line tool.
 
-## 13. Roadmap
+## 14. Roadmap
 
 | Step | Content | State |
 |---|---|---|
@@ -170,11 +203,12 @@ See `DEVELOPER_MODE.md`: demo world, self-test, time queries, read-only SQL cons
 | MVP 3 | GeoCore proof of concept: one region (Britain) | |
 | MVP 4 | EU5 target mod prototype | |
 | MVP 5 | CK3 1337 → EU5 1337 | |
-| later | Save Watcher → **History Collector** (diff every valid autosave), automatic transitions, Victoria 3, HoI4, Modern Era Bridge, Stellaris, Imperator | |
+| Bridge | Modern Era Bridge + Stellaris empire design from manual input | **prototype done** |
+| later | HoI4 save adapter → Bridge input; Stellaris mod generation; Save Watcher → **History Collector**; automatic transitions; Victoria 3; Imperator | |
 
 Biggest risks: reverse engineering each game's formats, GeoCore, and keeping adapters alive
 across patches — answered by golden tests on real saves of every supported version.
 
-## 14. Open items
+## 15. Open items
 
 See `BACKLOG.md` (agreed, later) and `OPEN_QUESTIONS.md` (needs a decision).

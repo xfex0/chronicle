@@ -153,3 +153,54 @@ export interface Period {
   from: string; to: string | null; game: string; source: string;
 }
 export interface QueryResult { columns: string[]; rows: unknown[][]; truncated: boolean }
+
+// ---- Modern Era Bridge (HoI4 → Stellaris)
+
+export type Ideology = "democracy" | "communism" | "fascism" | "monarchy" | "non_aligned";
+export const INDICATORS = [
+  "authoritarianism", "social_equality", "xenophobia", "international_cooperation", "religious_influence",
+  "militarism", "global_wars", "nuclear_weapons", "industrialization", "technology", "space_program",
+  "economic_planning", "environmental_policy", "planetary_unification",
+] as const;
+export type Indicator = (typeof INDICATORS)[number];
+
+export interface CivilizationState {
+  values: Record<Indicator, number>;
+  blocs: number;
+  ideology: Ideology;
+  known_indicators: number;
+}
+
+export interface BridgeEvent { year: number; kind: string }
+export interface Reason { code: string; value: number | null; detail: string | null }
+export interface Decision {
+  part: "authority" | "ethics" | "civics" | "origin";
+  choice: string[];
+  reasons: Reason[];
+  alternative: string | null;
+  confidence: number;
+  review_state: "auto" | "warning" | "pending_review";
+}
+export interface EmpireDesign {
+  authority: string;
+  ethics: string[];
+  civics: string[];
+  origin: string;
+  axes: Record<string, number>;
+  decisions: Decision[];
+  vocabulary_verified: boolean;
+}
+export interface BridgeResult {
+  seed: number;
+  start: CivilizationState;
+  run: { final_state: CivilizationState; events: BridgeEvent[]; flags: string[]; history: [number, CivilizationState][] };
+  design: EmpireDesign;
+  problems: string[];
+}
+export interface StellarisVocabulary {
+  verified: boolean;
+  authorities: Record<string, string>;
+  ethics: Record<string, string>;
+  civics: Record<string, string>;
+  origins: Record<string, string>;
+}

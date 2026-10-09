@@ -21,6 +21,8 @@ jobs:
           cargo run -q -p chronicle-devtools -- demo "$RUNNER_TEMP/demo"
           cargo run -q -p chronicle-devtools -- check "$RUNNER_TEMP/demo"
           cargo run -q -p chronicle-devtools -- owner "$RUNNER_TEMP/demo" Halych 1250
+          cargo run -q -p chronicle-devtools -- bridge global_democracy
+          cargo run -q -p chronicle-devtools -- bridge military_dictatorship
   ui:
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: apps/chronicle } }
