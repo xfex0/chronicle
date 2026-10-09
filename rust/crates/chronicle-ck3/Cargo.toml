@@ -1,6 +1,6 @@
 [package]
-name = "chronicle-bridge"
-description = "Modern Era Bridge: simulate 1948→2200 from a HoI4-era civilization and design the Stellaris empire"
+name = "chronicle-ck3"
+description = "Crusader Kings III adapter: read saves and import realms, counties, rulers and history into the campaign database"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -9,10 +9,12 @@ license.workspace = true
 [dependencies]
 paradox-parser.workspace = true
 chronicle-core.workspace = true
-chronicle-rng.workspace = true
+chronicle-db.workspace = true
 serde.workspace = true
 serde_yaml.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+sha2.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

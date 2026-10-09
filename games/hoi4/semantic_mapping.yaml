@@ -1,0 +1,48 @@
+# HoI4 text save → Modern Era Bridge indicators (Civilization of Earth).
+# Field paths verified on HoI4 1.19.3 text saves (see SAVE_FORMAT.md). Weights and reference
+# values are balance, not facts: tune freely. Countries are weighted by industrial capacity
+# (civilian + military factories they own), so major powers shape the world.
+
+version: 1
+
+# Party ideology → indicator value (0..1)
+ideology_values:
+  authoritarianism:  { democratic: 0.10, communism: 0.85, fascism: 0.90, neutrality: 0.65 }
+  social_equality:   { democratic: 0.65, communism: 0.85, fascism: 0.15, neutrality: 0.35 }
+  xenophobia:        { democratic: 0.25, communism: 0.45, fascism: 0.90, neutrality: 0.50 }
+ruling_party_weight: 0.6          # rest = party popularity mix
+
+# Laws (idea names verified in a 1.19.3 save)
+economy_law_level:
+  isolation: 0.0
+  undisturbed_isolation: 0.0
+  civilian_economy: 0.1
+  low_economic_mobilisation: 0.3
+  partial_economic_mobilisation: 0.5
+  war_economy: 0.75
+  tot_economic_mobilisation: 1.0
+conscription_law_level:
+  disarmed_nation: 0.0
+  volunteer_only: 0.1
+  limited_conscription: 0.3
+  extensive_conscription: 0.55
+  service_by_requirement: 0.8
+  all_adults_serve: 0.9
+  scraping_the_barrel: 1.0
+trade_law_xenophobia:
+  free_trade: -0.1
+  export_focus: 0.0
+  limited_exports: 0.05
+  closed_economy: 0.1
+
+militarism:          { military_factory_share: 0.4, war_support: 0.3, conscription: 0.3 }
+economic_planning:   { communist_rule: 0.6, economy_law: 0.4 }
+cooperation:         { peace_share: 0.5, democratic_share: 0.3, largest_faction_share: 0.2 }
+
+# Reference values that map counts to 0..1 (assumptions, document when changed)
+tech_reference_count: 420          # technologies researched ≈ the whole HoI4 tree
+factories_per_state_reference: 4.0 # world average factories per owned state for "fully industrial"
+nukes_scale: 10                    # nuclear_weapons = 1 - exp(-world nukes / scale)
+space_tech_markers: [rocket, jet_engine, atomic, nuclear]   # tech-name substrings (unverified)
+space_tech_reference: 12           # that many matching techs (weighted) ⇒ space_program = 1
+bloc_min_share: 0.10               # a faction is a power bloc above this share of world industry

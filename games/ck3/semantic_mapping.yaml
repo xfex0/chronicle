@@ -1,0 +1,35 @@
+# CK3 save → Chronicle semantic values. Paths verified on a real 1.0.2 save (SAVE_FORMAT.md).
+# Weights are balance (tune freely); law names marked below were seen in that save.
+
+version: 1
+# Game versions whose save layout has been verified. Others still import, but every derived
+# value fails the version gate and goes to manual review.
+verified_versions: ["1.0.2"]
+
+authority_law_level:
+  crown_authority_0: 0.0      # seen
+  crown_authority_1: 0.25     # seen
+  crown_authority_2: 0.5
+  crown_authority_3: 0.75
+  crown_authority_4: 1.0
+  tribal_authority_0: 0.0     # seen
+  tribal_authority_1: 0.15    # seen
+  tribal_authority_2: 0.3     # seen
+  tribal_authority_3: 0.45    # seen
+
+centralization:
+  formula: ck3_centralization_v1
+  authority_law: 0.6           # × law level
+  county_control: 0.4          # × average county control / 100
+  mapping_reliability: 0.7
+
+regional_autonomy:
+  formula: ck3_regional_autonomy_v1   # 1 - share of realm counties held directly by the ruler
+  mapping_reliability: 0.8
+
+average_development:
+  formula: ck3_average_development_v1
+  mapping_reliability: 0.9
+
+# Title history entries imported into the journal (tiers: 4 = empire, 3 = kingdom).
+history_min_tier: 3

@@ -28,7 +28,11 @@ const HELP: &str = "chronicle-dev <command>
   backups <folder>                    backup register (kind, path, time)
   registry                            validated game registry and transition dates
   bridge [preset] [seed]              Modern Era Bridge 1948→2200 and the Stellaris empire design
-                                      presets: global_democracy, military_dictatorship, cold_war, planned_technocracy";
+                                      presets: global_democracy, military_dictatorship, cold_war, planned_technocracy
+  stellaris <save.sav>                read the player's empire from a Stellaris save
+  hoi4 <save.hoi4> [seed]             HoI4 text save → civilization indicators → Bridge → Stellaris empire
+  ck3 <save.ck3>                      read a CK3 save: realms, player, largest states
+  import <folder> <save.ck3>          import a CK3 save into a campaign (creates the campaign if the folder is new)";
 
 type R = Result<(), Box<dyn std::error::Error>>;
 
@@ -190,6 +194,62 @@ fn run(args: &[String]) -> R {
             if !r.problems.is_empty() {
                 return Err(format!("invalid design: {:?}", r.problems).into());
             }
+        }
+        "stellaris" => {
+            let e = chronicle_bridge::read_empire(&PathBuf::from(a(1)?))?;
+            println!("{} ({}), {}, ironman: {:?}", e.name, e.game_version.unwrap_or_default(), e.date.unwrap_or_default(), e.ironman);
+            println!("  authority: {}", e.raw_authority.unwrap_or_default());
+            println!("  ethics:    {}", e.raw_ethics.join(", "));
+            println!("  civics:    {}", e.raw_civics.join(", "));
+            println!("  origin:    {}", e.raw_origin.unwrap_or_default());
+            println!("  government type: {}", e.government_type.unwrap_or_default());
+        }
+        "hoi4" => {
+            let world = chronicle_bridge::read_hoi4(&PathBuf::from(a(1)?))?;
+            let civ = chronicle_bridge::to_civilization(&world, chronicle_bridge::Hoi4Mapping::builtin());
+            let s = &civ.summary;
+            println!("HoI4 {} — {} (player {})", s.version.clone().unwrap_or_default(), s.date.clone().unwrap_or_default(), s.player.clone().unwrap_or_default());
+            println!("  world factories: {} in {} countries", s.world_factories, s.countries_with_industry);
+            println!("  top powers: {}", s.top_powers.iter().map(|(t, w)| format!("{t} {:.0}%", w * 100.0)).collect::<Vec<_>>().join(", "));
+            println!("  factions:   {}", s.factions.iter().map(|(n, w)| format!("{n} {:.0}%", w * 100.0)).collect::<Vec<_>>().join(", "));
+            println!("  at war:     {}", s.countries_at_war.join(" "));
+            println!("  indicators ({} of 14 from the save; missing: {}):", civ.state.coverage().0, s.missing.join(", "));
+            for (k, v) in &civ.state.values {
+                println!("    {k:<26} {:>5.1}%", v * 100.0);
+            }
+            println!("  blocs: {}, ideology: {:?}", civ.state.blocs, civ.state.ideology);
+            let seed: u64 = args.get(2).map(|s| s.parse()).transpose()?.unwrap_or(45_819_283);
+            let r = chronicle_bridge::run(&civ.state, seed)?;
+            let d = &r.design;
+            println!("\nStellaris empire (seed {seed}): {}; {}; {}; {}", d.authority, d.ethics.join(", "), d.civics.join(", "), d.origin);
+        }
+        "ck3" => {
+            let w = chronicle_ck3::read_ck3(&PathBuf::from(a(1)?))?;
+            println!(
+                "CK3 {} — {} (bookmark {}), player: {}",
+                w.version.clone().unwrap_or_default(),
+                w.date.map(|d| d.to_string()).unwrap_or_default(),
+                w.bookmark.map(|d| d.to_string()).unwrap_or_default(),
+                w.player_name.clone().unwrap_or_default()
+            );
+            println!("  titles {}, counties {}, realms {}", w.titles.len(), w.counties.len(), w.realms.len());
+            for r in w.realms.iter().take(12) {
+                let t = &w.titles[&r.primary_title];
+                let ruler = w.characters.get(&r.ruler).map(|c| c.name.clone()).unwrap_or_default();
+                let mark = if w.player.as_deref() == Some(r.ruler.as_str()) { "  ← player" } else { "" };
+                println!("  {:>4} counties  {:<24} {:<24} {}{mark}", r.counties.len(), t.key, t.name, ruler);
+            }
+        }
+        "import" => {
+            let folder = PathBuf::from(a(1)?);
+            let save = PathBuf::from(a(2)?);
+            let mut db = if CampaignDb::db_path(&folder).exists() {
+                CampaignDb::open(&folder)?
+            } else {
+                CampaignDb::create(&folder, "CK3 campaign", &CampaignSettings::new("ck3", 45_819_283), &GameRegistry::builtin()?)?
+            };
+            let r = chronicle_ck3::import_save(&mut db, &save)?;
+            println!("{}", serde_json::to_string_pretty(&r)?);
         }
         "registry" => {
             let reg = GameRegistry::builtin()?;

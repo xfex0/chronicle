@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { BridgeResult, CivilizationState, Decision, Ideology, Indicator, Reason, StellarisVocabulary } from "../api/types";
+import type { BridgeResult, CivilizationState, Decision, Hoi4Summary, Ideology, Indicator, Reason, StellarisCompare, StellarisVocabulary } from "../api/types";
 import { errorText, useI18n, type Key } from "../i18n";
 
 const GROUPS: [Key, Indicator[]][] = [
@@ -20,6 +20,8 @@ export function Bridge({ app }: { app: AppData }) {
   const [seed, setSeed] = useState(String(DEFAULT_SEED));
   const [result, setResult] = useState<BridgeResult | null>(null);
   const [busy, setBusy] = useState(false);
+  const [actual, setActual] = useState<StellarisCompare | null>(null);
+  const [hoi4, setHoi4] = useState<Hoi4Summary | null>(null);
   const fail = (e: unknown) => app.notify(errorText(t, errorCode(e)), "error");
 
   useEffect(() => {
@@ -71,13 +73,50 @@ export function Bridge({ app }: { app: AppData }) {
     }
   }
 
+  async function loadHoi4() {
+    const path = await backend.pickFile();
+    if (!path) return;
+    try {
+      const r = await backend.hoi4ReadWorld(path);
+      setCiv(r.state);
+      setHoi4(r.summary);
+      setResult(null);
+    } catch (e) {
+      fail(e);
+    }
+  }
+
+  async function compareSave() {
+    const path = await backend.pickFile();
+    if (!path) return;
+    try {
+      setActual(await backend.stellarisReadEmpire(path, result ? civ : null, result ? seedNum : null));
+    } catch (e) {
+      fail(e);
+    }
+  }
+
   if (!civ) return <section className="page"><p className="empty">{t("common.loading")}</p></section>;
 
   return (
     <section className="page page-wide">
       <h1>{t("br.title")}</h1>
       <p className="lede">{t("br.lede")}</p>
-      <p className="hint">{t("br.source")}</p>
+      <p className="hint">{hoi4 ? t("br.sourceHoi4") : t("br.source")}</p>
+      <div className="actions compact">
+        <button className="primary" onClick={loadHoi4}>{t("br.loadHoi4")}</button>
+      </div>
+      {hoi4 && (
+        <div className="notice">
+          <p>{t("br.hoi4Loaded", { version: hoi4.version ?? "?", date: hoi4.date ?? "?", n: civ.known_indicators })}</p>
+          <p className="muted">
+            {t("br.hoi4Powers", { list: hoi4.top_powers.slice(0, 5).map(([tag, w]) => `${tag} ${Math.round(w * 100)}%`).join(", ") })}
+            {hoi4.factions.length > 0 && ` ${t("br.hoi4Factions", { list: hoi4.factions.map(([n, w]) => `${n} ${Math.round(w * 100)}%`).join(", ") })}`}
+            {hoi4.countries_at_war.length > 0 && ` ${t("br.hoi4Wars", { list: hoi4.countries_at_war.join(" ") })}`}
+          </p>
+          {hoi4.missing.length > 0 && <p className="hint">{t("br.hoi4Missing", { list: hoi4.missing.map((k) => t(`ind.${k}` as Key)).join(", ") })}</p>}
+        </div>
+      )}
 
       <div className="row wrap examples">
         <span className="muted">{t("br.presets")}:</span>
@@ -134,6 +173,11 @@ export function Bridge({ app }: { app: AppData }) {
           {!app.boot.current_campaign && <span className="hint">{t("br.noCampaign")}</span>}
         </div>
       )}
+
+      <h2>{t("st.title")}</h2>
+      <p className="hint">{t("st.hint")}</p>
+      <div className="actions"><button onClick={compareSave}>{t("st.pick")}</button></div>
+      {actual && vocab && <ActualEmpire data={actual} vocab={vocab} />}
     </section>
   );
 }
@@ -223,6 +267,42 @@ function Changes({ result }: { result: BridgeResult }) {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function ActualEmpire({ data, vocab }: { data: StellarisCompare; vocab: StellarisVocabulary }) {
+  const { t } = useI18n();
+  const e = data.empire;
+  const cmp = data.comparison;
+  const ethic = (x: string) => {
+    const base = x.replace(/^fanatic_/, "");
+    const name = vocab.ethics[base] ?? base;
+    return x.startsWith("fanatic_") ? `${t("br.fanatic")} ${name}` : name;
+  };
+  const mark = (ok: boolean | undefined) => (cmp ? (ok ? " ✓" : " ✗") : "");
+  return (
+    <div className="empire-part actual">
+      <p className="eyebrow">{e.name_is_literal ? e.name : `${e.name} (${t("st.locKey")})`}</p>
+      <p className="muted">{t("st.meta", { version: e.game_version ?? "?", date: e.date ?? "?", ironman: e.ironman ? t("st.yes") : t("st.no") })}</p>
+      <dl className="facts">
+        <dt>{t("part.authority")}</dt>
+        <dd>{(e.authority && vocab.authorities[e.authority]) ?? e.raw_authority}{mark(cmp?.authority_matches)}</dd>
+        <dt>{t("part.ethics")}</dt>
+        <dd>{e.ethics.map(ethic).join(", ")}</dd>
+        <dt>{t("part.civics")}</dt>
+        <dd>{e.civics.map((c) => vocab.civics[c] ?? c).join(", ")}</dd>
+        <dt>{t("part.origin")}</dt>
+        <dd>{(e.origin && vocab.origins[e.origin]) ?? e.raw_origin}{mark(cmp?.origin_matches)}</dd>
+      </dl>
+      {cmp && (
+        <p className="notice">
+          {t("st.match", { value: Math.round(cmp.score * 100) })}
+          {cmp.shared_ethics.length > 0 && ` ${t("st.sharedEthics", { list: cmp.shared_ethics.map(ethic).join(", ") })}`}
+          {cmp.shared_civics.length > 0 && ` ${t("st.sharedCivics", { list: cmp.shared_civics.map((c) => vocab.civics[c] ?? c).join(", ") })}`}
+        </p>
+      )}
+      <p className="hint">{t("st.raw")}: <code>{[e.raw_authority, ...e.raw_ethics, ...e.raw_civics, e.raw_origin].filter(Boolean).join(" ")}</code></p>
     </div>
   );
 }

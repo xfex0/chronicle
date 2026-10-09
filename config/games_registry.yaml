@@ -27,6 +27,9 @@ games:
       verified: false
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
   ck3:
+    # Verified on 1.0.2: "SAV0102…" header + text meta + ZIP(gamestate, plain text).
+    # Import into the campaign database works (chronicle-ck3). Ironman/binary needs token
+    # tables that cannot be distributed → unsupported.
     display_name: "Crusader Kings III"
     steam_app_id: 1158310
     status: mvp
@@ -38,7 +41,7 @@ games:
     save_dir:
       documents_subpath: ["Paradox Interactive/Crusader Kings III/save games"]
       verified: true
-    save_formats: { plaintext: planned, compressed: planned, binary: planned }   # MVP 1
+    save_formats: { plaintext: supported, compressed: supported, binary: unsupported }
   eu5:
     display_name: "Europa Universalis V"
     steam_app_id: 3450310
@@ -66,6 +69,10 @@ games:
       verified: false
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
   hoi4:
+    # Verified on 1.19.3 "Operation Postern": default saves start with "HOI4bin" (token-encoded
+    # binary). Token names are not distributable, so Chronicle reads TEXT saves only:
+    # Documents/Paradox Interactive/Hearts of Iron IV/settings.txt → save_as_binary=no.
+    # Text saves (HOI4txt) are read for the Modern Era Bridge (games/hoi4/semantic_mapping.yaml).
     display_name: "Hearts of Iron IV"
     steam_app_id: 394360
     status: planned
@@ -77,7 +84,7 @@ games:
     save_dir:
       documents_subpath: ["Paradox Interactive/Hearts of Iron IV/save games"]
       verified: true
-    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_formats: { plaintext: planned, compressed: planned, binary: unsupported }
   modern_bridge:
     display_name: "Modern Era Bridge"
     kind: virtual                                 # simulated by Chronicle, no game install
@@ -86,6 +93,8 @@ games:
     era_verified: true
 
   stellaris:
+    # Verified on 3.14.15: saves are ZIP (gamestate + meta) with PLAIN TEXT even for ironman.
+    # The player's empire can be read (games/stellaris/SAVE_FORMAT.md); full import is planned.
     display_name: "Stellaris"
     steam_app_id: 281990
     status: planned

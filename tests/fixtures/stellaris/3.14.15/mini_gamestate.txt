@@ -1,0 +1,96 @@
+version="Circinus v3.14.15"
+version_control_revision=26
+name="Юґґот"
+date="2404.11.09"
+required_dlcs=
+{
+	"Federations"
+	"Utopia"
+}
+player=
+{
+	
+	{
+		name="unknown"
+		country=0
+	}
+ 
+}
+tick=1234
+galaxy=
+{
+	shape="elliptical"
+}
+country=
+{
+	0=
+	{
+		flag=
+		{
+			icon=
+			{
+				category="plantoid"
+				file="plantoid_03.dds"
+			}
+			colors=
+			{
+				"silver_steel"
+				"black"
+			}
+		}
+		color_index=-1
+		name=
+		{
+			key="Юґґот"
+			literal=yes
+		}
+		ethos=
+		{
+			ethic="ethic_militarist"
+			ethic="ethic_fanatic_spiritualist"
+		}
+		government=
+		{
+			type="gov_star_empire"
+			authority="auth_imperial"
+			civics=
+			{
+				"civic_mining_guilds"
+				"civic_nationalistic_zeal"
+			}
+			origin="origin_necrophage"
+			heir=167772305
+			council_positions=
+			{
+				6 7 8 29 
+			}
+		}
+		type="default"
+	}
+	1=
+	{
+		name=
+		{
+			key="EMPIRE_DESIGN_humans1"
+		}
+		ethos=
+		{
+			ethic="ethic_egalitarian"
+			ethic="ethic_xenophile"
+			ethic="ethic_materialist"
+		}
+		government=
+		{
+			type="gov_moral_democracy"
+			authority="auth_democratic"
+			civics=
+			{
+				"civic_parliamentary_system"
+				"civic_idealistic_foundation"
+			}
+			origin="origin_default"
+		}
+		type="default"
+	}
+	2=none
+}

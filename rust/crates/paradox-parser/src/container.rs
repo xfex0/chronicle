@@ -47,7 +47,26 @@ const GZIP_MAGIC: &[u8] = b"\x1f\x8b";
 const ZSTD_MAGIC: &[u8] = b"\x28\xb5\x2f\xfd";
 const SAMPLE: usize = 64 * 1024;
 
+/// Hearts of Iron IV saves start with a 7-byte magic instead of a `SAV` line.
+/// `HOI4bin` verified on 1.19.3 (token-encoded binary); `HOI4txt` is the plain-text variant.
+const HOI4_BIN: &[u8] = b"HOI4bin";
+const HOI4_TXT: &[u8] = b"HOI4txt";
+/// A ZIP signature is only trusted this close to the start, and only after a text prefix:
+/// large binary payloads can contain the 4 signature bytes by chance.
+const ZIP_SEARCH_WINDOW: usize = 16 * 1024 * 1024;
+
 pub fn detect(bytes: &[u8]) -> DetectedSave {
+    if bytes.starts_with(HOI4_BIN) || bytes.starts_with(HOI4_TXT) {
+        let binary = bytes.starts_with(HOI4_BIN);
+        return DetectedSave {
+            header_line: Some(String::from_utf8_lossy(&bytes[..7]).into_owned()),
+            payload_offset: 7,
+            container: ContainerKind::Plain,
+            archive_offset: None,
+            encoding: if binary { Encoding::Binary } else { sniff_encoding(&bytes[7..]) },
+        };
+    }
+
     let (header_line, payload_offset) = read_header(bytes);
     let payload = &bytes[payload_offset..];
 
@@ -55,7 +74,9 @@ pub fn detect(bytes: &[u8]) -> DetectedSave {
         (ContainerKind::Gzip, Some(payload_offset))
     } else if payload.starts_with(ZSTD_MAGIC) {
         (ContainerKind::Zstd, Some(payload_offset))
-    } else if let Some(pos) = find(payload, ZIP_MAGIC) {
+    } else if let Some(pos) = find(&payload[..payload.len().min(ZIP_SEARCH_WINDOW)], ZIP_MAGIC)
+        .filter(|&pos| pos == 0 || !matches!(sniff_encoding(&payload[..pos]), Encoding::Binary))
+    {
         (ContainerKind::Zip, Some(payload_offset + pos))
     } else {
         (ContainerKind::Plain, None)
@@ -67,6 +88,39 @@ pub fn detect(bytes: &[u8]) -> DetectedSave {
     };
 
     DetectedSave { header_line, payload_offset, container, archive_offset, encoding }
+}
+
+/// Best-effort game version from the first bytes, e.g. "1.19.3" from
+/// `Operation Postern v1.19.3.0.c01a` or "3.14.15" from `Circinus v3.14.15`.
+/// Works on binary saves too because the version is stored as a plain string.
+pub fn sniff_version(bytes: &[u8]) -> Option<String> {
+    let head = &bytes[..bytes.len().min(8192)];
+    let mut i = 0;
+    while i + 1 < head.len() {
+        if head[i] == b'v' && head[i + 1].is_ascii_digit() && (i == 0 || !head[i - 1].is_ascii_alphanumeric()) {
+            let mut parts: Vec<String> = Vec::new();
+            let mut j = i + 1;
+            loop {
+                let start = j;
+                while j < head.len() && head[j].is_ascii_digit() {
+                    j += 1;
+                }
+                if j == start {
+                    break;
+                }
+                parts.push(String::from_utf8_lossy(&head[start..j]).into_owned());
+                if parts.len() == 3 || j >= head.len() || head[j] != b'.' {
+                    break;
+                }
+                j += 1;
+            }
+            if parts.len() >= 2 {
+                return Some(parts.join("."));
+            }
+        }
+        i += 1;
+    }
+    None
 }
 
 fn read_header(bytes: &[u8]) -> (Option<String>, usize) {
@@ -164,6 +218,36 @@ mod tests {
         let d = detect(&v);
         assert_eq!(d.container, ContainerKind::Zip);
         assert_eq!(d.archive_offset, Some(zip_at));
+    }
+
+    #[test]
+    fn hoi4_binary_header() {
+        // Same layout as a real 1.19.3 save: magic, then token/type/len/value records.
+        let mut v = b"HOI4bin".to_vec();
+        v.extend_from_slice(b"\x35\x2a\x01\x00\x0f\x00\x03\x00GER");
+        v.extend_from_slice(b"\x01\x00\x0f\x00\x27\x00Operation Postern v1.19.3.0.c01a (5632)");
+        v.extend_from_slice(&[0u8, 1, 2, 3, 4, 5, 6, 0, 1, 2, 3, 4, 5, 6]);
+        let d = detect(&v);
+        assert_eq!(d.header_line.as_deref(), Some("HOI4bin"));
+        assert_eq!(d.payload_offset, 7);
+        assert_eq!(d.container, ContainerKind::Plain);
+        assert_eq!(d.encoding, Encoding::Binary);
+        assert_eq!(sniff_version(&v).as_deref(), Some("1.19.3"));
+    }
+
+    #[test]
+    fn hoi4_text_header_and_stellaris_version() {
+        let d = detect(b"HOI4txt\nplayer=\"GER\"\n");
+        assert_eq!(d.encoding, Encoding::Text(TextEncoding::Utf8));
+        assert_eq!(sniff_version(b"version=\"Circinus v3.14.15\"").as_deref(), Some("3.14.15"));
+        assert_eq!(sniff_version(b"no version here, avocado"), None);
+    }
+
+    #[test]
+    fn zip_signature_inside_binary_is_not_a_container() {
+        let mut v: Vec<u8> = (0..400u16).map(|i| (i % 7) as u8).collect();
+        v.extend_from_slice(b"PK\x03\x04");
+        assert_eq!(detect(&v).container, ContainerKind::Plain);
     }
 
     #[test]

@@ -131,6 +131,8 @@ export interface SaveInfo {
   encoding: string;
   format: SaveFormat;
   support: FormatSupport | null;
+  header: string | null;
+  version_hint: string | null;
   sections: [string, number][];
 }
 
@@ -204,3 +206,29 @@ export interface StellarisVocabulary {
   civics: Record<string, string>;
   origins: Record<string, string>;
 }
+
+export interface StellarisEmpire {
+  name: string; name_is_literal: boolean; game_version: string | null; date: string | null; ironman: boolean | null;
+  country_id: string; government_type: string | null;
+  raw_authority: string | null; raw_ethics: string[]; raw_civics: string[]; raw_origin: string | null;
+  authority: string | null; ethics: string[]; civics: string[]; origin: string | null;
+}
+export interface DesignComparison {
+  authority_matches: boolean; shared_ethics: string[]; shared_civics: string[]; origin_matches: boolean; score: number;
+}
+export interface StellarisCompare { empire: StellarisEmpire; comparison: DesignComparison | null }
+
+export interface Hoi4Summary {
+  version: string | null; date: string | null; player: string | null;
+  world_factories: number; countries_with_industry: number;
+  top_powers: [string, number][]; factions: [string, number][]; countries_at_war: string[]; missing: string[];
+}
+export interface Hoi4Civilization { state: CivilizationState; summary: Hoi4Summary }
+
+export interface Ck3ImportReport {
+  game_version: string | null; version_verified: boolean; date: string | null;
+  realms: number; counties: number; rulers: number; dynasties: number; cultures: number; faiths: number;
+  new_entities: number; ownership_changes: number; events_added: number; semantic_values: number;
+  player_realm: string | null; stored_copy: string; snapshot_id: number; warnings: string[];
+}
+export interface Ck3Import { report: Ck3ImportReport; campaign: CampaignSummary }

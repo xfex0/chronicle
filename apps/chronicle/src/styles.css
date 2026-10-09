@@ -156,6 +156,7 @@ th { font-weight: 500; }
 .pill.review-auto { color: var(--verdigris); }
 .pill.review-warning { color: var(--ochre); }
 .pill.review-pending_review { color: var(--madder); }
+.empire-part.actual { max-width: 40rem; }
 .journal-row.is-alarm .journal-date, .journal-row.is-alarm .journal-type { color: var(--madder); }
 .delta { color: var(--ink-soft); text-align: center; }
 .delta.up { color: var(--verdigris); }

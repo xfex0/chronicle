@@ -15,4 +15,5 @@ chronicle-core.workspace = true
 chronicle-db.workspace = true
 chronicle-steam.workspace = true
 chronicle-bridge.workspace = true
+chronicle-ck3.workspace = true
 serde_json.workspace = true

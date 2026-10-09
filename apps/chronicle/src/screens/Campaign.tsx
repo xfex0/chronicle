@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { CampaignSummary, SaveInfo } from "../api/types";
+import type { CampaignSummary, Ck3ImportReport, SaveInfo } from "../api/types";
 import { SettingsEditor, type EditableSettings } from "../components/SettingsEditor";
 import { errorText, formatDate, useI18n, type Key } from "../i18n";
 
@@ -120,6 +120,23 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
   });
   const [valid, setValid] = useState(true);
   const [inspect, setInspect] = useState<SaveInfo | null>(null);
+  const [report, setReport] = useState<Ck3ImportReport | null>(null);
+  const [importing, setImporting] = useState(false);
+
+  async function importCk3() {
+    const p = await backend.pickFile();
+    if (!p) return;
+    setImporting(true);
+    try {
+      const r = await backend.importCk3(p);
+      setReport(r.report);
+      app.setCampaign(r.campaign);
+    } catch (e) {
+      app.notify(errorText(t, errorCode(e)), "error");
+    } finally {
+      setImporting(false);
+    }
+  }
   const onValidity = useCallback((ok: boolean) => setValid(ok), []);
 
   async function save() {
@@ -175,6 +192,21 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
         <button className="primary" onClick={save} disabled={!valid}>{t("camp.save")}</button>
       </div>
 
+      <h2>{t("imp.title")}</h2>
+      <p className="hint">{t("imp.hint")}</p>
+      <div className="actions">
+        <button className="primary" onClick={importCk3} disabled={importing}>{importing ? t("imp.running") : t("imp.pick")}</button>
+      </div>
+      {report && (
+        <div className="notice">
+          <p>{t("imp.done", { realms: report.realms, counties: report.counties, rulers: report.rulers, events: report.events_added, date: formatDate(lang, report.date) })}</p>
+          {report.player_realm && <p>{t("imp.player", { name: report.player_realm })}</p>}
+          <p className="muted">{t("imp.details", { cultures: report.cultures, faiths: report.faiths, dynasties: report.dynasties, values: report.semantic_values, version: report.game_version ?? "?" })}</p>
+          {!report.version_verified && <p className="field-error">{t("imp.unverified")}</p>}
+          {report.warnings.length > 0 && <ul className="reasons">{report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+        </div>
+      )}
+
       <h2>{t("camp.inspect")}</h2>
       <p className="hint">{t("camp.inspectHint")}</p>
       <div className="actions"><button onClick={inspectSave}>{t("camp.inspectPick")}</button></div>
@@ -183,7 +215,9 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
           <p className="muted">{inspect.path}, {(inspect.size / 1e6).toFixed(1)} MB</p>
           <dl className="facts">
             <dt>{t("inspect.format")}</dt><dd>{t(`format.${inspect.format}` as Key)}</dd>
+            {inspect.version_hint && (<><dt>{t("inspect.version")}</dt><dd>{inspect.version_hint}</dd></>)}
           </dl>
+          {inspect.header === "HOI4bin" && <p className="notice is-warning">{t("inspect.hoi4Binary")}</p>}
           {inspect.support && (
             <p className={inspect.support === "supported" ? "notice" : "notice is-warning"}>{t(`support.${inspect.support}` as Key)}</p>
           )}

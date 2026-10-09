@@ -32,6 +32,10 @@ cargo run -p chronicle-devtools -- steam       # real Steam detection on this PC
 cargo run -p chronicle-devtools -- registry    # transition dates, alternatives, custom-start support
 cargo run -p chronicle-devtools -- backups ../demo-campaign
 cargo run -p chronicle-devtools -- bridge military_dictatorship 45819283   # HoI4 → Stellaris
+cargo run -p chronicle-devtools -- stellaris "C:\path\to\ironman.sav"     # read a real Stellaris save
+cargo run -p chronicle-devtools -- hoi4 "C:\path\to\autosave.hoi4"        # HoI4 text save → Bridge → Stellaris
+cargo run -p chronicle-devtools -- ck3 "C:\path\to\save.ck3"               # realms and the player in a CK3 save
+cargo run -p chronicle-devtools -- import ../my-campaign "C:\path\to\save.ck3"  # import into a campaign
 ```
 
 The demo + self-test also run in CI on Windows and Linux, and before every installer build.

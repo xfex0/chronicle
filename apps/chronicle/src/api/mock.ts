@@ -1,6 +1,6 @@
 // Browser-only demo data (npm run dev). Never shipped behaviour: the desktop build uses Rust.
 
-import type { Bootstrap, BridgeResult, Check, CivilizationState, DemoResult, EntityLabel, EventRow, OwnershipPeriod, Period, QueryResult, StellarisVocabulary } from "./types";
+import type { Bootstrap, BridgeResult, Check, CivilizationState, DemoResult, EntityLabel, EventRow, Hoi4Civilization, OwnershipPeriod, Period, QueryResult, StellarisCompare, StellarisVocabulary } from "./types";
 
 const registry: Bootstrap["registry"] = {
   version: 1,
@@ -100,6 +100,25 @@ const democracy: CivilizationState = {
 };
 
 export const mockBridge = {
+  hoi4: (): Hoi4Civilization => ({
+    state: { ...democracy, known_indicators: 12, blocs: 2, ideology: "fascism" },
+    summary: {
+      version: "Operation Postern v1.19.3.0.c01a (5632)", date: "1940.1.3.14", player: "GER",
+      world_factories: 1713, countries_with_industry: 87,
+      top_powers: [["USA", 0.096], ["GER", 0.086], ["SOV", 0.079]], factions: [["Axis", 0.159], ["Allies", 0.156]],
+      countries_at_war: ["CHI", "JAP"], missing: ["religious_influence", "environmental_policy"],
+    },
+  }),
+  compare: (): StellarisCompare => ({
+    empire: {
+      name: "Юґґот", name_is_literal: true, game_version: "Circinus v3.14.15", date: "2404.11.09", ironman: true,
+      country_id: "0", government_type: "gov_star_empire",
+      raw_authority: "auth_imperial", raw_ethics: ["ethic_militarist", "ethic_fanatic_spiritualist"],
+      raw_civics: ["civic_mining_guilds", "civic_nationalistic_zeal"], raw_origin: "origin_necrophage",
+      authority: "imperial", ethics: ["militarist", "fanatic_spiritualist"], civics: ["mining_guilds", "nationalistic_zeal"], origin: "necrophage",
+    },
+    comparison: { authority_matches: false, shared_ethics: ["militarist"], shared_civics: ["nationalistic_zeal"], origin_matches: false, score: 0.21 },
+  }),
   presets: (): [string, CivilizationState][] => [["global_democracy", democracy]],
   vocabulary: (): StellarisVocabulary => ({
     verified: false,

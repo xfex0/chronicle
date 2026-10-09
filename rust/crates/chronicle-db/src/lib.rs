@@ -19,8 +19,10 @@ use serde_json::Value;
 pub mod dev;
 pub mod migrate;
 pub mod periods;
+pub mod world;
 
 pub use periods::{Aspect, OwnershipPeriod, Period, PeriodError};
+pub use world::{NamedTable, SemanticInput};
 
 /// Campaign folder layout (originals are read-only copies; nothing is ever written to user saves).
 pub const CAMPAIGN_DIRS: [&str; 8] =

@@ -14,13 +14,17 @@
 
 pub mod config;
 pub mod design;
+pub mod hoi4_save;
 pub mod sim;
 pub mod state;
+pub mod stellaris_save;
 
 pub use config::{BridgeConfig, Vocabulary};
 pub use design::{Decision, EmpireDesign, Reason, design_empire, validate_design};
+pub use hoi4_save::{Hoi4Civilization, Hoi4Error, Hoi4Mapping, Hoi4Summary, Hoi4World, read_hoi4, read_hoi4_bytes, to_civilization};
 pub use sim::{BridgeEvent, BridgeRun, simulate};
 pub use state::{CivilizationState, INDICATORS, Ideology, StateError, presets};
+pub use stellaris_save::{DesignComparison, ReadError, StellarisEmpire, compare, read_empire, read_empire_from_text};
 
 use serde::Serialize;
 

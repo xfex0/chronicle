@@ -21,4 +21,5 @@ chronicle-core = { path = "../../../rust/crates/chronicle-core" }
 chronicle-db = { path = "../../../rust/crates/chronicle-db" }
 chronicle-steam = { path = "../../../rust/crates/chronicle-steam" }
 chronicle-bridge = { path = "../../../rust/crates/chronicle-bridge" }
+chronicle-ck3 = { path = "../../../rust/crates/chronicle-ck3" }
 paradox-parser = { path = "../../../rust/crates/paradox-parser" }

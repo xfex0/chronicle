@@ -117,12 +117,17 @@ pub struct Authority {
     pub key: String,
     #[serde(default)]
     pub forbids_ethics: Vec<String>,
+    /// Key seen in a real save (see games/stellaris/SAVE_FORMAT.md).
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct Ethic {
     pub name: String,
     pub opposite: String,
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -136,6 +141,8 @@ pub struct Civic {
     pub forbids_ethics: Vec<String>,
     #[serde(default)]
     pub dlc: bool,
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -146,6 +153,8 @@ pub struct Origin {
     pub requires_ethics: Vec<String>,
     #[serde(default)]
     pub dlc: bool,
+    #[serde(default)]
+    pub verified: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]

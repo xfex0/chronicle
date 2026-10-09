@@ -4,7 +4,7 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeResult, CivilizationState, StellarisVocabulary,
+  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, StellarisCompare, StellarisVocabulary,
 } from "./types";
 import { mockBootstrap, mockBridge, mockDev, mockEvents } from "./mock";
 
@@ -55,7 +55,8 @@ export const backend = {
     call<void>("check_transition_date", { from, to, date, targetStart }, () => undefined),
   inspectSave: (path: string, game: string | null) =>
     call<SaveInfo>("inspect_save", { path, game }, () => ({
-      path, size: 0, container: "zip", encoding: "unknown", format: "compressed", support: "planned", sections: [],
+      path, size: 0, container: "plain", encoding: "binary", format: "binary", support: "unsupported",
+      header: "HOI4bin", version_hint: "1.19.3", sections: [],
     })),
 
   // developer mode
@@ -81,6 +82,18 @@ export const backend = {
   bridgeExport: (civ: CivilizationState, seed: number, folder: string, language: Language) =>
     call<string>("bridge_export", { civ, seed, folder, language }, () => `${folder}/chronicle_stellaris_empire_${seed}.md`),
   bridgeVocabulary: () => call<StellarisVocabulary>("bridge_vocabulary", {}, mockBridge.vocabulary),
+  importCk3: (path: string) =>
+    call<Ck3Import>("import_ck3_save", { path }, () => ({
+      campaign: mockBootstrap().current_campaign!,
+      report: {
+        game_version: "1.0.2", version_verified: true, date: "923.4.28", realms: 292, counties: 2548, rulers: 292,
+        dynasties: 270, cultures: 120, faiths: 60, new_entities: 3500, ownership_changes: 2548, events_added: 2900,
+        semantic_values: 876, player_realm: "Гуджарат", stored_copy: "original/…", snapshot_id: 1, warnings: [],
+      },
+    })),
+  hoi4ReadWorld: (path: string) => call<Hoi4Civilization>("hoi4_read_world", { path }, mockBridge.hoi4),
+  stellarisReadEmpire: (path: string, civ: CivilizationState | null, seed: number | null) =>
+    call<StellarisCompare>("stellaris_read_empire", { path, civ, seed }, mockBridge.compare),
 
   pickFolder: () => pick(true),
   pickFile: () => pick(false),

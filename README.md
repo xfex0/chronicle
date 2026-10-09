@@ -23,11 +23,16 @@ Interface: English and Ukrainian. Windows installer for everyone (no developer t
   (default CK3→EU5 = 1337.4.1, validated so history only moves forward), confidence thresholds.
 - Dashboard with the campaign chain, Timeline, database backups, read-only save inspector.
 
-- Modern Era Bridge (prototype): describe Earth at the end of HoI4, simulate 1948–2200 and get
+- Modern Era Bridge (prototype): load Earth from a HoI4 text save (or describe it with sliders), simulate 1948–2200 and get
   a Stellaris empire (authority, ethics, civics, origin) with reasons and confidence; write
   the simulated history into the campaign timeline or export an empire card.
+- Reads the player's empire from a real Stellaris save (verified on 3.14.15, ironman too) and
+  compares it with the suggested empire.
 
-Not yet: reading CK3/HoI4 saves into the database, GeoCore/map, generated game mods.
+- Imports Crusader Kings III saves into the campaign (verified on 1.0.2): realms, counties,
+  rulers, dynasties, cultures, faiths, ownership, derived values and kingdom/empire history.
+
+Not yet: snapshot diffs between imports, GeoCore/map, generated game mods.
 
 ## Develop
 

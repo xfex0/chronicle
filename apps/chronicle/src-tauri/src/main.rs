@@ -13,7 +13,7 @@ use chronicle_db::dev::{self as devtools, Check, DemoSummary, EntityLabel, Query
 use chronicle_db::{Aspect, AppDb, BackupKind, CampaignDb, CampaignIndexRow, CampaignSummary, EventRow, InstallationRow, OwnershipPeriod, Period};
 use chronicle_steam::{detect_all, find_steam, verify_install_dir, SteamInstall};
 use paradox_parser::container::{ContainerKind, Encoding, TextEncoding};
-use paradox_parser::{detect, source, TopLevelIndex};
+use paradox_parser::{detect, sniff_version, source, TopLevelIndex};
 use serde::{Deserialize, Serialize};
 use tauri::{Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -445,6 +445,46 @@ fn bridge_export(civ: chronicle_bridge::CivilizationState, seed: u64, folder: St
     Ok(md.display().to_string())
 }
 
+#[derive(Serialize)]
+struct StellarisCompare {
+    empire: chronicle_bridge::StellarisEmpire,
+    comparison: Option<chronicle_bridge::DesignComparison>,
+}
+
+/// Read the player's empire from a Stellaris save and, if a bridge state is given,
+/// compare it with the suggested design.
+#[tauri::command]
+async fn stellaris_read_empire(
+    path: String,
+    civ: Option<chronicle_bridge::CivilizationState>,
+    seed: Option<u64>,
+) -> CmdResult<StellarisCompare> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let empire = chronicle_bridge::read_empire(&PathBuf::from(path)).map_err(err)?;
+        let comparison = match (civ, seed) {
+            (Some(c), Some(s)) => Some(chronicle_bridge::compare(&chronicle_bridge::run(&c, s).map_err(err)?.design, &empire)),
+            _ => None,
+        };
+        Ok(StellarisCompare { empire, comparison })
+    })
+    .await
+    .map_err(err)?
+}
+
+/// Read a HoI4 TEXT save and turn the world into Bridge indicators.
+#[tauri::command]
+async fn hoi4_read_world(path: String) -> CmdResult<chronicle_bridge::Hoi4Civilization> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let world = chronicle_bridge::read_hoi4(&PathBuf::from(path)).map_err(|e| match e {
+            chronicle_bridge::Hoi4Error::Binary => "hoi4_binary".to_string(),
+            other => other.to_string(),
+        })?;
+        Ok(chronicle_bridge::to_civilization(&world, chronicle_bridge::Hoi4Mapping::builtin()))
+    })
+    .await
+    .map_err(err)?
+}
+
 #[tauri::command]
 fn bridge_vocabulary() -> serde_json::Value {
     let v = chronicle_bridge::Vocabulary::builtin();
@@ -460,6 +500,35 @@ fn bridge_vocabulary() -> serde_json::Value {
     })
 }
 
+// ---------------------------------------------------------------- CK3 import (MVP 1)
+
+#[derive(Serialize)]
+struct Ck3Import {
+    report: chronicle_ck3::ImportReport,
+    campaign: CampaignSummary,
+}
+
+/// Read a CK3 save and import it into the open campaign (backup first; the save is copied,
+/// never modified).
+#[tauri::command]
+async fn import_ck3_save(app: tauri::AppHandle, path: String) -> CmdResult<Ck3Import> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let save = PathBuf::from(&path);
+        let world = chronicle_ck3::read_ck3(&save).map_err(|e| match e {
+            chronicle_ck3::Ck3Error::Binary => "ck3_binary".to_string(),
+            other => other.to_string(),
+        })?;
+        let state = app.state::<AppState>();
+        let mut guard = state.campaign.lock().map_err(err)?;
+        let db = guard.as_mut().ok_or("no_campaign")?;
+        let report = chronicle_ck3::import_world(db, &world, &save).map_err(err)?;
+        let campaign = db.summary().map_err(err)?;
+        Ok(Ck3Import { report, campaign })
+    })
+    .await
+    .map_err(err)?
+}
+
 // ---------------------------------------------------------------- save inspection
 
 #[derive(Serialize)]
@@ -472,6 +541,10 @@ struct SaveInfo {
     format: &'static str,
     /// What this Chronicle version can import for the given game (None if no game given).
     support: Option<FormatSupport>,
+    /// Header magic / first line, e.g. "HOI4bin" or a CK3 "SAV..." line.
+    header: Option<String>,
+    /// Game version read from the first bytes, when present (works for binary saves too).
+    version_hint: Option<String>,
     sections: Vec<(String, usize)>,
 }
 
@@ -515,6 +588,8 @@ fn inspect_impl(path: PathBuf, game: Option<chronicle_core::GameDef>) -> Result<
         encoding,
         format: format.as_str(),
         support,
+        header: d.header_line.clone(),
+        version_hint: sniff_version(&bytes),
         sections,
     })
 }
@@ -581,7 +656,10 @@ fn main() {
             bridge_run,
             bridge_commit,
             bridge_export,
-            bridge_vocabulary
+            bridge_vocabulary,
+            stellaris_read_empire,
+            hoi4_read_world,
+            import_ck3_save
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Chronicle");

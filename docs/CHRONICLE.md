@@ -162,9 +162,9 @@ Crate `chronicle-bridge`, screen **Bridge → Stellaris**, CLI `chronicle-dev br
    social equality, xenophobia, international cooperation, religious influence, militarism,
    wars, nuclear weapons, industrialization, technology, space program, planned economy,
    environmental policy, planetary unification) + number of power blocs + dominant ideology.
-   Today: manual input or presets. Later: the HoI4 adapter fills the same indicators through
-   the Semantic Registry (`games/hoi4/semantic_signals.yaml` lists what it must extract;
-   `CivilizationState::from_semantics` lowers data coverage for anything missing).
+   Sources: a **HoI4 text save** (`read_hoi4` + `to_civilization`, 12 of 14 indicators from
+   the save, weighted by each country's industry — `games/hoi4/semantic_mapping.yaml`),
+   presets, or manual sliders. Missing indicators stay neutral and lower data coverage.
 2. **Simulation 1948 → 2200** in decades, deterministic per seed: technology/industry growth,
    space race or cooperative space program, slow social drift, nuclear war (needs nukes,
    rivalry and low cooperation), climate crisis or ecological collapse, conquest or peaceful
@@ -187,6 +187,38 @@ suites assert the spec examples (global democracy → Democratic, Egalitarian/Ma
 Xenophile, Technocracy + Beacon of Liberty, Prosperous Unification; military dictatorship →
 Dictatorial, Authoritarian/Militarist/Xenophobe, Distinguished Admiralty + Nationalistic Zeal).
 
+### CK3 saves — MVP 1 import ✅ (verified on 1.0.2)
+
+`chronicle-ck3` reads a CK3 save (header + text meta + ZIP gamestate) and imports into the
+campaign database: realms → countries (stable ids keyed by the primary title), counties →
+territories with ownership periods, rulers and their houses with ruler/dynasty periods,
+cultures, faiths, three semantic values per realm (centralization from authority law +
+county control, regional autonomy, average development — with provenance and confidence,
+version-gated), and kingdom/empire title history as journal events (`game` before the
+bookmark, `save` after). The save is copied into `original/` (read-only) and registered as a
+snapshot; a backup is made first; re-imports reuse ids and never duplicate history.
+Screen: Campaign → **Import a CK3 save**; CLI: `chronicle-dev ck3 <save>` / `import <folder> <save>`.
+Layout facts: `games/ck3/SAVE_FORMAT.md`.
+
+### Stellaris saves — verified on a real save ✅
+
+A real Stellaris 3.14.15 "Circinus" ironman save showed: ZIP (`gamestate` + `meta`) with
+**plain text even in ironman**; player, ethics, government (authority, civics, origin) paths
+confirmed. Chronicle now reads the player's empire from any such save (`read_empire`,
+screen **Bridge → Compare with my Stellaris save**, CLI `chronicle-dev stellaris <save>`)
+and compares it with the suggested design. 22 vocabulary keys are now marked verified.
+Details: `games/stellaris/SAVE_FORMAT.md`.
+
+### HoI4 saves — verified on a real save ✅
+
+HoI4 1.19.3 default saves start with `HOI4bin` and are token-encoded binary; with
+`save_as_binary=no` the game writes `HOI4txt` text saves, which Chronicle reads. Token tables cannot be
+distributed, so Chronicle does not decode binary HoI4 saves: it detects them, shows the
+game version, and asks for a text save (`settings.txt → save_as_binary=no`). The HoI4 adapter
+for the Bridge will read text saves. Container detection was hardened at the same time: a
+ZIP signature is only trusted near the start of a file and after a text prefix.
+Details: `games/hoi4/SAVE_FORMAT.md`.
+
 ## 13. Developer mode
 
 See `DEVELOPER_MODE.md`: demo world, self-test, time queries, read-only SQL console, and the
@@ -197,7 +229,7 @@ See `DEVELOPER_MODE.md`: demo world, self-test, time queries, read-only SQL cons
 | Step | Content | State |
 |---|---|---|
 | MVP 0 | Steam + manual detection, campaign creation, database, backups, developer mode | done (awaits first compile on CI) |
-| MVP 1 | CK3 save parser (via `jomini` evaluation), snapshots, snapshot diff, event journal | next |
+| MVP 1 | CK3 save import: realms, counties, rulers, dynasties, cultures, faiths, ownership, semantics, title history | **done for 1.0.2 saves** (snapshot diff between imports: next) |
 | EU5 research | save format, mod structure, map/locations, countries, cultures, religions, markets, pops, laws, governments, tech, localisation, world overrides | **in parallel with MVP 1** |
 | MVP 2 | Semantic Registry, confidence, provenance, "Why?" inspector | |
 | MVP 3 | GeoCore proof of concept: one region (Britain) | |

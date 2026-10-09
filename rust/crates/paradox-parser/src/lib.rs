@@ -22,7 +22,7 @@ pub mod parser;
 pub mod source;
 
 pub use ast::{Container, Entry, Operator, Scalar, Value};
-pub use container::{ContainerKind, DetectedSave, Encoding, detect};
+pub use container::{ContainerKind, DetectedSave, Encoding, detect, sniff_version};
 pub use error::{ParseError, Result};
 pub use index::{SectionInfo, TopLevelIndex};
 pub use parser::{ParseOptions, ParseOutput, parse, parse_with};

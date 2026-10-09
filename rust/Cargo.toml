@@ -16,6 +16,7 @@ chronicle-steam = { path = "crates/chronicle-steam" }
 chronicle-rng = { path = "crates/chronicle-rng" }
 chronicle-devtools = { path = "crates/chronicle-devtools" }
 chronicle-bridge = { path = "crates/chronicle-bridge" }
+chronicle-ck3 = { path = "crates/chronicle-ck3" }
 geocore = { path = "crates/geocore" }
 
 serde = { version = "1", features = ["derive"] }
@@ -30,6 +31,7 @@ dirs = "5"
 winreg = "0.52"
 uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
+sha2 = "0.10"
 
 [profile.release]
 lto = "thin"

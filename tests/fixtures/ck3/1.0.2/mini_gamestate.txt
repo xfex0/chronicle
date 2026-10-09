@@ -1,0 +1,196 @@
+meta_data={
+	save_game_version=3
+	version="1.0.2"
+	meta_date=923.4.28
+	meta_player_name="Махарани Расаладеви"
+	meta_title_name="Расаладевииды Королевство"
+}
+date=923.4.28
+bookmark_date=867.1.1
+played_character={
+	name="UNKNOWN"
+	character=100
+	player=1
+}
+currently_played_characters={ 100 }
+landed_titles={
+	dynamic_templates={ {
+			key="x_mc_0"
+			tier=duchy
+			dyn=yes
+		}
+}
+	landed_titles={
+		1={
+			key="k_gujarat"
+			holder=100
+			name="Гуджарат"
+			capital=10
+			history={
+				502.1.1=798
+				745.1.1={
+					type=destroyed
+				}
+				869.6.5={
+					type=created
+					holder=7001
+				}
+				923.4.21=100
+			}
+		}
+		2={
+			key="k_sindh"
+			holder=100
+			name="Синд"
+		}
+		3={
+			key="c_a"
+			holder=100
+			de_facto_liege=1
+			de_jure_liege=1
+			name="Анахилавада"
+		}
+		4={
+			key="c_b"
+			holder=200
+			de_facto_liege=5
+			name="Кхетака"
+		}
+		5={
+			key="d_lata"
+			holder=200
+			de_facto_liege=1
+			name="Лата"
+		}
+		6={
+			key="c_c"
+			holder=300
+			name="Тахта"
+			history={
+				900.1.1=300
+			}
+		}
+		7={
+			key="x_mc_0"
+			holder=400
+		}
+		8={
+			key="b_x"
+			holder=100
+			de_facto_liege=3
+		}
+	}
+	index=9
+}
+county_manager={
+	counties={
+		c_a={
+			development=14
+			county_control=100
+			culture=75
+			faith=42
+		}
+
+		c_b={
+			development=10
+			county_control=80
+			culture=75
+			faith=42
+		}
+
+		c_c={
+			development=5
+			county_control=60
+			culture=9
+			faith=7
+		}
+
+	}
+}
+living={
+100={
+	first_name="Rasaladevi"
+	birth=904.7.1
+	female=yes
+	culture=75
+	faith=42
+	dynasty_house=10475
+	landed_data={
+		domain={ 1 2 3 8 }
+		became_ruler_date=923.4.21
+		laws={ "male_preference_law" "confederate_partition_succession_law" "crown_authority_1" }
+	}
+}
+200={
+	first_name="Vallabha"
+	birth=880.1.1
+	culture=75
+	faith=42
+	dynasty_house=11
+	landed_data={
+		domain={ 5 4 }
+		laws={ "crown_authority_0" }
+	}
+}
+300={
+	first_name="Tahta"
+	birth=870.5.5
+	culture=9
+	faith=7
+	dynasty_house=11
+	landed_data={
+		domain={ 6 }
+		became_ruler_date=900.1.1
+		laws={ "tribal_authority_3" }
+	}
+}
+}
+dynasties={
+	dynasty_house={
+10475={
+	localized_name="Расаладевииды"
+	found_date=923.4.28
+	head_of_house=100
+	dynasty=2837
+}
+11={
+	name="dynn_Chalukya"
+	found_date=9999.1.1
+	dynasty=11
+}
+}
+	dynasties={
+0={
+	key="2837"
+}
+}
+}
+culture_manager={
+	cultures={
+		9={
+			culture_template="sindhi"
+		}
+		75={
+			culture_template="gujarati"
+		}
+	}
+}
+religion={
+	religions={
+		0={
+			template="hindu_religion"
+			family="rf_eastern"
+			faiths={ 42 }
+		}
+	}
+	faiths={
+		7={
+			template="bon"
+			tag="bon"
+		}
+		42={
+			template="smartism"
+			tag="smartism"
+		}
+	}
+}
