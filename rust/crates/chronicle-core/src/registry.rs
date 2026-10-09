@@ -244,7 +244,13 @@ mod tests {
         assert_eq!(r.game("eu5").unwrap().steam_app_id, Some(3450310));
         assert_eq!(r.game("ck3").unwrap().steam_launch_url().as_deref(), Some("steam://run/1158310"));
         assert!(r.game("modern_bridge").unwrap().steam_app_id.is_none());
-        assert_eq!(r.game("ck3").unwrap().format_support(SaveFormat::Binary), FormatSupport::Planned);
+        // CK3 text saves import (verified on 1.0.2); binary needs non-distributable tokens.
+        let ck3 = r.game("ck3").unwrap();
+        assert_eq!(ck3.format_support(SaveFormat::Plaintext), FormatSupport::Supported);
+        assert_eq!(ck3.format_support(SaveFormat::Compressed), FormatSupport::Supported);
+        assert_eq!(ck3.format_support(SaveFormat::Binary), FormatSupport::Unsupported);
+        assert_eq!(r.game("hoi4").unwrap().format_support(SaveFormat::Binary), FormatSupport::Unsupported);
+        assert_eq!(r.game("eu5").unwrap().format_support(SaveFormat::Binary), FormatSupport::Planned);
     }
 
     #[test]
