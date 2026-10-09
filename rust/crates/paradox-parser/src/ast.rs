@@ -114,8 +114,13 @@ pub struct Container<'a> {
 
 impl<'a> Container<'a> {
     /// First value for `key` (keys may repeat — repeated keys usually mean a list).
+    /// The result borrows only from `self`, not from `key`.
     pub fn get(&self, key: &str) -> Option<&Value<'a>> {
-        self.get_all(key).next()
+        let key = key.as_bytes();
+        self.entries.iter().find_map(|e| match e {
+            Entry::Pair { key: k, value, .. } if k.raw == key => Some(value),
+            _ => None,
+        })
     }
 
     /// All values for `key`, in document order.
