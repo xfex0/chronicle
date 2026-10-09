@@ -124,7 +124,9 @@ impl TopLevelIndex {
         v
     }
 
-    pub fn find<'s>(&'s self, key: &'s str) -> impl Iterator<Item = &'s SectionSpan> + 's {
+    /// Spans with this key. The returned spans borrow only the index, not `key`, so a lookup
+    /// helper like `|key: &str| idx.find(key).next()` can return them.
+    pub fn find<'s, 'k>(&'s self, key: &'k str) -> impl Iterator<Item = &'s SectionSpan> + use<'s, 'k> {
         self.spans.iter().filter(move |s| s.key == key)
     }
 }

@@ -81,6 +81,11 @@ pub struct Period {
     pub source: String,
 }
 
+/// Open ownership period: (row id, owner, from year, from month, from day).
+type OpenOwnership = (i64, Option<String>, i32, Option<u8>, Option<u8>);
+/// Open state period: (row id, value, value entity, from year, from month, from day).
+type OpenPeriod = (i64, Option<String>, Option<String>, i32, Option<u8>, Option<u8>);
+
 fn date_at(r: &Row<'_>, idx: usize) -> rusqlite::Result<Option<PartialDate>> {
     let year: Option<i32> = r.get(idx)?;
     Ok(year.map(|year| PartialDate { year, month: r.get(idx + 1).ok().flatten(), day: r.get(idx + 2).ok().flatten() }))
@@ -130,7 +135,7 @@ impl CampaignDb {
         source: &str,
     ) -> Result<()> {
         let tx = self.conn_mut().transaction()?;
-        let open: Option<(i64, Option<String>, i32, Option<u8>, Option<u8>)> = tx
+        let open: Option<OpenOwnership> = tx
             .query_row(
                 "SELECT id, owner_id, from_year, from_month, from_day FROM territory_ownership
                  WHERE territory_id = ?1 AND to_key IS NULL",
@@ -209,6 +214,7 @@ impl CampaignDb {
     }
 
     /// Start a new period of `aspect` for `entity` (government form, ruler, dynasty, ...).
+    #[allow(clippy::too_many_arguments)]
     pub fn set_period(
         &mut self,
         entity: &ChronicleId,
@@ -220,7 +226,7 @@ impl CampaignDb {
         source: &str,
     ) -> Result<()> {
         let tx = self.conn_mut().transaction()?;
-        let open: Option<(i64, Option<String>, Option<String>, i32, Option<u8>, Option<u8>)> = tx
+        let open: Option<OpenPeriod> = tx
             .query_row(
                 "SELECT id, value, value_entity_id, from_year, from_month, from_day FROM entity_periods
                  WHERE entity_id = ?1 AND aspect = ?2 AND to_key IS NULL",

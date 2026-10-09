@@ -124,7 +124,7 @@ impl<'a> Container<'a> {
     }
 
     /// All values for `key`, in document order.
-    pub fn get_all<'s>(&'s self, key: &'s str) -> impl Iterator<Item = &'s Value<'a>> + 's {
+    pub fn get_all<'s, 'k>(&'s self, key: &'k str) -> impl Iterator<Item = &'s Value<'a>> + use<'s, 'k, 'a> {
         self.entries.iter().filter_map(move |e| match e {
             Entry::Pair { key: k, value, .. } if k.raw == key.as_bytes() => Some(value),
             _ => None,
