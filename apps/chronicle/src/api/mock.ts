@@ -153,10 +153,15 @@ const STEP_IDS = ["find_save", "check_save", "backup", "import_final", "final_sn
   "coefficients", "build_world", "preview", "generate", "validate", "close_era", "next_era"] as const;
 
 export function mockTransition(finished: boolean): TransitionPlan {
+  const countsFor = (id: string): Record<string, number> => {
+    if (id === "import_final") return { countries: 87, territories: 1081, wars: 18 };
+    if (id === "diff_history") return { territories_changed: 12, events_added: 31 };
+    return {};
+  };
   const steps: TransitionStep[] = STEP_IDS.map((id, i) => ({
     id,
     status: id === "geo_core" ? "skipped" : id === "check_save" ? "warning" : i <= 10 || finished ? "done" : "pending",
-    counts: id === "import_final" ? { countries: 87, territories: 1081, wars: 18 } : id === "diff_history" ? { territories_changed: 12, events_added: 31 } : {},
+    counts: countsFor(id),
     note: id === "check_save" ? "transition_date_not_reached" : id === "geo_core" ? "one_planet" : null,
   }));
   return {
@@ -165,7 +170,7 @@ export function mockTransition(finished: boolean): TransitionPlan {
     preview: {
       source_countries: 87, target_countries: 1, merged: 87, split: 0, vanished: 0, created: 1, low_confidence: 3,
       geocore_warnings: 0, critical_errors: 0, notes: ["stellaris_keys_partly_unverified"],
-      design: mockBridge.result(mockBridge.presets()[0][1], 1).design, start_year: 1940, bridge_events: 7,
+      design: mockBridge.result(mockBridge.presets()[0]![1], 1).design, start_year: 1940, bridge_events: 7,
     },
     can_generate: true, blocked_reason: null, conversion_id: 1, snapshot_id: 3,
     generated: finished ? { file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt", backup: null, empire_name: "Terran Federation", replaced: false, warnings: [] } : null,

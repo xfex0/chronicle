@@ -124,7 +124,7 @@ export function Timeline({ app }: { app: AppData }) {
     const [lo, hi] = bounds;
     for (const e of byGame) {
       const i = Math.min(n - 1, Math.max(0, Math.floor(((yearOf(e.date) - lo) / (hi - lo)) * n)));
-      arr[i] += 1;
+      arr[i] = (arr[i] ?? 0) + 1;
     }
     const max = Math.max(1, ...arr);
     return arr.map((v) => v / max);
