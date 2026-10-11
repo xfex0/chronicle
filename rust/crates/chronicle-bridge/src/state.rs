@@ -79,7 +79,7 @@ impl CivilizationState {
     }
 
     pub fn add(&mut self, key: &str, dv: f64) {
-        let v = (self.get(key) + dv).max(0.0).min(1.0);
+        let v = (self.get(key) + dv).clamp(0.0, 1.0);
         self.values.insert(key.to_string(), v);
     }
 

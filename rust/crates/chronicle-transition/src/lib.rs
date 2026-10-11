@@ -613,7 +613,8 @@ pub fn prepare(
             run.plan.preview = Some(preview);
             run.block_rest(StepId::Generate, "eu5_adapter_research");
         }
-        RouteKind::Unsupported => {
+        // Vic3 → HoI4 is fully handled by `prepare_external` before this point.
+        RouteKind::Unsupported | RouteKind::Vic3ToHoi4External => {
             run.block_rest(StepId::GeoCore, "target_adapter_missing");
         }
     }

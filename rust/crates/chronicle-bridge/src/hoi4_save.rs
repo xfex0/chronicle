@@ -332,7 +332,7 @@ pub fn to_civilization(world: &Hoi4World, m: &Hoi4Mapping) -> Hoi4Civilization {
     let at_war: BTreeSet<&str> = world.wars.iter().flat_map(|(a, b)| [a.as_str(), b.as_str()]).collect();
 
     let mut v: BTreeMap<String, f64> = BTreeMap::new();
-    let sum_w = |f: &dyn Fn(&Hoi4Country, f64) -> f64| -> f64 { ic.iter().map(|(c, x)| weight(*x) * f(*c, *x)).sum() };
+    let sum_w = |f: &dyn Fn(&Hoi4Country, f64) -> f64| -> f64 { ic.iter().map(|(c, x)| weight(*x) * f(c, *x)).sum() };
     v.insert("authoritarianism".into(), sum_w(&|c, _| mix("authoritarianism", c)));
     v.insert("social_equality".into(), sum_w(&|c, _| mix("social_equality", c)));
     v.insert(
