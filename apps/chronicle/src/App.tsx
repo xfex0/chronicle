@@ -81,7 +81,7 @@ export function App() {
         const stableFor = Date.now() / 1000 - r.newest_save.modified;
         if (c.settings.transition_mode === "automatic" && stableFor > 60) {
           autoPrepared.current = id;
-          await backend.transitionPrepare(r.newest_save.path, { seed: 45819283, start_year: null, empire_name: "", adjective: "Terran" });
+          await backend.transitionPrepare(r.newest_save.path, { seed: 45819283, start_year: null, empire_name: "", adjective: "Terran" }, null);
           notifyRef.current(translate(lang, "tr2.autoPrepared"));
         } else if (c.settings.transition_mode === "suggested") {
           autoPrepared.current = id;
