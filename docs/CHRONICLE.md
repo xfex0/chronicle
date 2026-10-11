@@ -139,7 +139,21 @@ Every event records `origin` (game | save | snapshot_diff | converter | user), `
 requires `date_to`). Example: snapshots 1200 and 1205 disagree on a capital → one inferred
 `capital_changed` event dated 1200–1205.
 
-## 11. GeoCore ✅ schema (migration 0003), logic in MVP 3
+## 11. GeoCore ✅ schema (migration 0003); engine ✅ (crate `geocore`); real maps: next
+
+Engine (format-agnostic, tested on synthetic maps):
+- `raster` — a game's province/location image as labels (PNG RGB/RGBA/palette, 8/16 bit) +
+  colour→id table; relabel (e.g. CK3 provinces → counties);
+- `align` — affine transform fitted by least squares to control points (same real place on
+  both maps), with its max error in pixels; per-region transforms handle projections;
+- `overlap` — samples the target map, maps each sample into the source, counts pairs →
+  links with share of source (to split additive values) and share of target (ownership),
+  plus unmatched units;
+- `ck3_map` — CK3 input read from the player's install at run time: `definition.csv`
+  colours, `provinces.png`, baronies' `province = N` in `landed_titles` → county.
+
+Next: EU5 map input (needs the EU5 file layout from a player's install), control-point sets
+per region, storing links in `province_area_overlap`, and the EU5 adapter that uses them.
 
 GeoCore is a subsystem of its own: Map Importer → Raster Analyzer → Province Geometry →
 Control Points → Map Alignment → Province Crosswalk → Overlap Calculator.
@@ -272,6 +286,27 @@ Each step is reported live (Tauri event `transition-step`). Every run is recorde
 reached); **automatic** (when the newest save has been stable for a minute after the date,
 Chronicle runs steps 1–11 and asks you to review — generation always waits for you).
 The old era is never deleted: its save copy, history and data stay; it is marked completed.
+
+### Victoria 3 → HoI4 through an external converter ✅ (route `Vic3ToHoi4External`)
+
+Building a HoI4 world from Victoria 3 needs a map transfer (≈700 Vic3 states → ≈1000 HoI4
+states), ideologies, leaders, industry, technology and a HoI4 mod — GeoCore-scale work.
+Until Chronicle has its own, the community Victoria 3 → HoI4 converter (Paradox Game
+Converters) builds the world and **Chronicle orchestrates the era change**:
+
+1–3. newest Victoria 3 save, checks (version and label read from plain metadata strings, date
+     from the file name), backup;
+4.   import skipped while saves are binary (the save is kept; history waits for a text save);
+5.   final snapshot + read-only copy; a `world_snapshot` journal event puts Victoria 3 on the
+     timeline;
+8–10. done by the external converter (path set on the Era transition screen, stored in app
+     settings as `converter.victoria3->hoi4`; Chronicle can launch it);
+11.  preview; 12. after "Conversion finished — check", Chronicle finds the newest `*.mod` in
+     the HoI4 mod folder written since step 1; 13. its `path` folder must contain HoI4 content
+     (`common/` or `history/`); 14–15. `era_transition`, Victoria 3 completed, HoI4 current
+     from 1936.1.1. A text HoI4 save then continues the history (import, diffs, → Stellaris).
+
+The timeline shows a tab for every era of the chain; eras without events are dimmed.
 
 ## 12b. Interface: "night archive" with a theme per game
 

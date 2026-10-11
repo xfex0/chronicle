@@ -19,11 +19,13 @@ export function Transition({ app }: { app: AppData }) {
   const [phase, setPhase] = useState<"idle" | "preparing" | "preview" | "generating" | "done">("idle");
   const [savePath, setSavePath] = useState<string | null>(null);
   const [bridge, setBridge] = useState<BridgeParams>({ seed: 45819283, start_year: null, empire_name: "", adjective: "Terran" });
+  const [converters, setConverters] = useState<Record<string, string>>({});
   const fail = (e: unknown) => app.notify(errorText(t, errorCode(e)), "error");
 
   useEffect(() => {
     if (!campaign) return;
     backend.transitionReadiness().then(setReady).catch(fail);
+    backend.getConverters().then(setConverters).catch(() => setConverters({}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?.id, campaign?.current_game]);
 
@@ -79,6 +81,26 @@ export function Transition({ app }: { app: AppData }) {
       setPhase("done");
     } catch (e) {
       setPhase("preview");
+      fail(e);
+    }
+  }
+
+  const routeKey = route ? `${route.from}->${route.to}` : "";
+  async function chooseConverter() {
+    const p = await backend.pickFile();
+    if (!p) return;
+    try {
+      await backend.setConverter(routeKey, p);
+      setConverters(await backend.getConverters());
+    } catch (e) {
+      fail(e);
+    }
+  }
+  async function openConverter() {
+    try {
+      await backend.launchConverter(routeKey);
+      app.notify(t("ext.launched"));
+    } catch (e) {
       fail(e);
     }
   }
@@ -166,6 +188,25 @@ export function Transition({ app }: { app: AppData }) {
         </fieldset>
       )}
 
+      {route?.kind === "vic3_to_hoi4_external" && (
+        <fieldset className="group">
+          <legend>{t("ext.title")}</legend>
+          <p className="hint">{t("ext.hint")}</p>
+          <p>{converters[routeKey] ? <code>{converters[routeKey]}</code> : <span className="muted">{t("ext.notSet")}</span>}</p>
+          <div className="actions compact">
+            <button onClick={chooseConverter}>{t("ext.choose")}</button>
+            {converters[routeKey] && plan && <button className="primary" onClick={openConverter}>{t("ext.open")}</button>}
+          </div>
+          {plan?.save && phase !== "done" && (
+            <ol className="steps">
+              <li>{t("ext.step1")} <code>{plan.save}</code></li>
+              <li>{t("ext.step2")}</li>
+              <li>{t("ext.step3")}</li>
+            </ol>
+          )}
+        </fieldset>
+      )}
+
       <div className="actions">
         <button className="primary" onClick={start} disabled={running || !route}>
           {phase === "preparing" ? t("tr2.preparing") : plan ? t("tr2.restart") : t("tr2.start")}
@@ -217,11 +258,27 @@ export function Transition({ app }: { app: AppData }) {
             <button onClick={() => app.go("timeline")}>{t("tr2.viewChanges")}</button>
             {phase !== "done" && (
               <button className="primary" onClick={confirm} disabled={!plan.can_generate || phase === "generating"}>
-                {phase === "generating" ? t("tr2.generating") : t("tr2.create", { game: name(plan.route.to) })}
+                {phase === "generating"
+                  ? t("tr2.generating")
+                  : plan.route.kind === "vic3_to_hoi4_external"
+                    ? t("ext.finish")
+                    : t("tr2.create", { game: name(plan.route.to) })}
               </button>
             )}
           </div>
         </section>
+      )}
+
+      {phase === "done" && plan?.external_output && (
+        <div className="notice">
+          <p><strong>{t("tr2.done", { game: name(plan.route.to) })}</strong></p>
+          <p className="muted">{t("ext.found", { path: plan.external_output })}</p>
+          <ol className="steps">
+            <li>{t("ext.done1")}</li>
+            <li>{t("ext.done2")}</li>
+          </ol>
+          <p className="muted">{t("tr2.oldEraKept", { game: name(plan.route.from) })}</p>
+        </div>
       )}
 
       {phase === "done" && plan?.generated && (

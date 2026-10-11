@@ -12,6 +12,15 @@
 //! Mapping files are YAML in `games/<game>/mapping/` and `config/mappings/`; Python loads
 //! them and passes the parsed structure here (no YAML dependency in Rust).
 
+pub mod align;
+pub mod ck3_map;
+pub mod overlap;
+pub mod raster;
+
+pub use align::{Affine, ControlPoint};
+pub use overlap::{OverlapCounts, OverlapLink, overlap};
+pub use raster::{LabelRaster, RasterError};
+
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
@@ -189,5 +198,89 @@ mod tests {
         assert!(matches!(m.normalized(), Err(MappingError::BadWeight { .. })));
         let m = TerritoryMapping { links: vec![Link { source: u("t:1"), target: "1".into(), weight: 1.0 }] };
         assert_eq!(m.unmapped([&u("t:1"), &u("t:9")]), vec![u("t:9")]);
+    }
+}
+
+#[cfg(test)]
+mod geocore_engine_tests {
+    use std::collections::HashMap;
+
+    use super::*;
+
+    /// 4×4 source map: left half province 1, right half 2.
+    fn source() -> LabelRaster {
+        let labels = (0..16).map(|i| if i % 4 < 2 { 1 } else { 2 }).collect();
+        LabelRaster { width: 4, height: 4, labels }
+    }
+
+    #[test]
+    fn affine_from_control_points() {
+        // target is the source scaled ×2 and shifted by (10, 0)
+        let pts = [
+            ControlPoint { from: (10.0, 0.0), to: (0.0, 0.0) },
+            ControlPoint { from: (18.0, 0.0), to: (4.0, 0.0) },
+            ControlPoint { from: (10.0, 8.0), to: (0.0, 4.0) },
+            ControlPoint { from: (18.0, 8.0), to: (4.0, 4.0) },
+        ];
+        let t = Affine::fit(&pts).unwrap();
+        assert!(t.max_error(&pts) < 1e-9);
+        let (x, y) = t.apply((14.0, 4.0));
+        assert!((x - 2.0).abs() < 1e-9 && (y - 2.0).abs() < 1e-9);
+        assert!(Affine::fit(&pts[..2]).is_none(), "two points are not enough");
+    }
+
+    #[test]
+    fn overlap_shares_both_ways() {
+        // target 8×8: one big location 10 on the left 3 columns (×2), location 20 on the rest
+        let labels = (0..64).map(|i| if i % 8 < 3 { 10 } else { 20 }).collect();
+        let target = LabelRaster { width: 8, height: 8, labels };
+        let to_source = Affine { a: 0.5, b: 0.0, c: 0.0, d: 0.0, e: 0.5, f: 0.0 };
+        let counts = overlap(&source(), &target, &to_source, 1);
+        let links = counts.links(0.0);
+        let get = |s, t| links.iter().find(|l| l.source == s && l.target == t).cloned();
+        // source 1 (target columns 0..4): 3 columns in 10, 1 in 20
+        assert!((get(1, 10).unwrap().share_of_source - 0.75).abs() < 1e-9);
+        assert!((get(1, 20).unwrap().share_of_source - 0.25).abs() < 1e-9);
+        assert_eq!(get(2, 10), None);
+        assert!((get(2, 20).unwrap().share_of_source - 1.0).abs() < 1e-9);
+        // location 20: 1 column from province 1, 4 from province 2
+        assert!((get(2, 20).unwrap().share_of_target - 0.8).abs() < 1e-9);
+        assert!(counts.unmatched_sources([1u32, 2, 3].iter()).contains(&3));
+    }
+
+    #[test]
+    fn png_round_trip() {
+        let tmp = tempfile::tempdir().unwrap();
+        let path = tmp.path().join("provinces.png");
+        let (w, h) = (3u32, 2u32);
+        let pixels: Vec<u8> = vec![255, 0, 0, 0, 255, 0, 255, 0, 0, 0, 0, 255, 0, 0, 255, 9, 9, 9];
+        {
+            let file = std::fs::File::create(&path).unwrap();
+            let mut enc = png::Encoder::new(std::io::BufWriter::new(file), w, h);
+            enc.set_color(png::ColorType::Rgb);
+            enc.set_depth(png::BitDepth::Eight);
+            enc.write_header().unwrap().write_image_data(&pixels).unwrap();
+        }
+        let colors: HashMap<[u8; 3], u32> = [([255, 0, 0], 1), ([0, 255, 0], 2), ([0, 0, 255], 3)].into_iter().collect();
+        let r = LabelRaster::from_png(&path, &colors).unwrap();
+        assert_eq!(r.labels, vec![1, 2, 1, 3, 3, 0]);
+        let merged = r.relabel(&[(1, 7), (2, 7)].into_iter().collect());
+        assert_eq!(merged.labels, vec![7, 7, 7, 0, 0, 0]);
+    }
+
+    #[test]
+    fn ck3_definition_and_landed_titles() {
+        let csv = "0;0;0;0;x;x;\n1;42;3;128;Vestisland;x;\n2;84;6;1;Reykjavik;x;\n# comment\n";
+        let colors = ck3_map::definition_colors(csv);
+        assert_eq!(colors.get(&[42, 3, 128]), Some(&1));
+        assert_eq!(colors.len(), 2);
+        let lt = "e_britannia = { k_england = { d_york = { c_york = { b_york = { province = 1 } b_tadcaster = { province = 2 } }\n c_hull = { b_hull = { province = 3 } } } } }";
+        let p = ck3_map::province_counties(lt);
+        assert_eq!(p.get(&1).map(String::as_str), Some("c_york"));
+        assert_eq!(p.get(&2).map(String::as_str), Some("c_york"));
+        assert_eq!(p.get(&3).map(String::as_str), Some("c_hull"));
+        let (map, keys) = ck3_map::county_labels(&p);
+        assert_eq!(keys, ["c_hull", "c_york"]);
+        assert_eq!(map[&1], map[&2]);
     }
 }

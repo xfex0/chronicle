@@ -118,6 +118,23 @@ pub struct Ck3World {
     pub realms: Vec<Ck3Realm>,
 }
 
+/// Readable fallback when a save stores no display name (CK3 1.19 keeps names in the game's
+/// localisation): "k_castille" → "Castille", "house_borgona_castille" → "Borgona Castille".
+pub fn display_from_key(key: &str) -> String {
+    let body = ["e_", "k_", "d_", "c_", "b_", "x_", "house_", "dynn_"]
+        .iter()
+        .find_map(|p| key.strip_prefix(p))
+        .unwrap_or(key);
+    body.split('_')
+        .filter(|w| !w.is_empty())
+        .map(|w| {
+            let mut c = w.chars();
+            c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default()
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 fn inner<'a>(src: &'a [u8], span: &SectionSpan) -> &'a [u8] {
     if !span.is_block {
         return &src[span.value_start..span.value_end];
@@ -224,12 +241,15 @@ pub fn read_gamestate(g: &[u8]) -> Result<Ck3World, Ck3Error> {
                 }
             }
             let id = id.as_str().into_owned();
+            let key = text(t.get("key")).unwrap_or_default();
+            // 1.19 saves keep only the key unless the title was renamed in the game
+            let name = text(t.get("name")).unwrap_or_else(|| display_from_key(&key));
             w.titles.insert(
                 id.clone(),
                 Ck3Title {
                     id,
-                    key: text(t.get("key")).unwrap_or_default(),
-                    name: text(t.get("name")).unwrap_or_default(),
+                    key,
+                    name,
                     holder: text(t.get("holder")),
                     liege: text(t.get("de_facto_liege")),
                     capital: text(t.get("capital")),
@@ -341,7 +361,11 @@ pub fn read_gamestate(g: &[u8]) -> Result<Ck3World, Ck3Error> {
                     continue;
                 }
                 let Some(c) = v.as_container() else { continue };
-                let name = text(c.get("localized_name")).or_else(|| text(c.get("name"))).unwrap_or_default();
+                // 1.0.2: localized_name / name; 1.19: only a localisation key
+                let name = text(c.get("localized_name"))
+                    .or_else(|| text(c.get("name")))
+                    .or_else(|| text(c.get("key")).map(|k| display_from_key(&k)))
+                    .unwrap_or_default();
                 w.houses.insert(
                     id.clone(),
                     Ck3House {
@@ -427,6 +451,30 @@ pub(crate) mod tests {
         assert_eq!(w.houses["10475"].name, "Расаладевииды");
         assert_eq!(w.houses["11"].founded, None, "9999.1.1 means 'not founded in history'");
         assert_eq!(w.characters["100"].laws.last().map(String::as_str), Some("crown_authority_1"));
+    }
+
+    const FIXTURE_1_19: &[u8] = include_bytes!("../../../../tests/fixtures/ck3/1.19/mini_gamestate.txt");
+
+    #[test]
+    fn reads_1_19_layout() {
+        let w = read_gamestate(FIXTURE_1_19).unwrap();
+        assert_eq!(w.version.as_deref(), Some("1.19.0.6"));
+        assert_eq!(w.player_title_name.as_deref(), Some("Spain"));
+        assert_eq!(w.titles["7724"].name, "Castille", "no name in 1.19 saves: readable fallback from the key");
+        assert_eq!(w.houses["10775"].name, "Borgona Castille");
+        assert_eq!(w.faiths["23"], "catholic", "1.19 faiths have faith_type/tag, no template");
+        assert_eq!(w.cultures["81"], "castilian");
+        let player = w.realms.iter().find(|r| r.ruler == "54122").unwrap();
+        assert_eq!(w.titles[&player.primary_title].key, "e_spain");
+        assert_eq!(player.counties, ["c_burgos", "c_leon"], "c_leon is held by a vassal");
+        assert_eq!(w.characters["54122"].laws[0], "crown_authority_2");
+    }
+
+    #[test]
+    fn display_names_from_keys() {
+        assert_eq!(display_from_key("k_castille"), "Castille");
+        assert_eq!(display_from_key("e_holy_roman_empire"), "Holy Roman Empire");
+        assert_eq!(display_from_key("dynn_Chalukya"), "Chalukya");
     }
 
     #[test]

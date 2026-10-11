@@ -1,5 +1,11 @@
 name: ci
 on: [push, pull_request]
+
+# A newer push cancels checks still running for an older one.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   rust:
     strategy:
@@ -10,6 +16,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with: { components: "rustfmt, clippy" }
+      # Reuse compiled dependencies between runs: minutes instead of a full rebuild.
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: rust }
       # Style check reports but never blocks the build; run the "format" workflow to fix.
       - run: cargo fmt --all --check
         continue-on-error: true

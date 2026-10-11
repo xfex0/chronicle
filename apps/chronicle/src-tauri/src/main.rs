@@ -730,11 +730,50 @@ fn transition_dirs(state: &AppState) -> Result<BTreeMap<String, chronicle_transi
         .collect())
 }
 
+/// External converters by route, stored in the app settings ("converter.victoria3->hoi4").
+fn transition_converters(state: &AppState) -> BTreeMap<String, PathBuf> {
+    let db = relock(&state.db);
+    ["victoria3->hoi4"]
+        .iter()
+        .filter_map(|route| {
+            db.get_setting(&format!("converter.{route}")).ok().flatten().map(|p| (route.to_string(), PathBuf::from(p)))
+        })
+        .collect()
+}
+
+#[tauri::command]
+fn get_converters(state: State<'_, AppState>) -> BTreeMap<String, String> {
+    transition_converters(&state).into_iter().map(|(k, v)| (k, v.display().to_string())).collect()
+}
+
+/// Remember where an external converter program is (e.g. the Vic3 → HoI4 converter frontend).
+#[tauri::command]
+fn set_converter(state: State<'_, AppState>, route: String, path: String) -> CmdResult<()> {
+    if !std::path::Path::new(&path).is_file() {
+        return Err("file_not_found".into());
+    }
+    relock(&state.db).set_setting(&format!("converter.{route}"), &path).map_err(err)
+}
+
+/// Start the external converter program in its own folder (it is a separate application).
+#[tauri::command]
+fn launch_converter(state: State<'_, AppState>, route: String) -> CmdResult<String> {
+    let path = transition_converters(&state).remove(&route).ok_or("converter_not_set")?;
+    let dir = path.parent().map(PathBuf::from).unwrap_or_default();
+    std::process::Command::new(&path).current_dir(dir).spawn().map_err(err)?;
+    Ok(path.display().to_string())
+}
+
 /// "Recommended" / automatic modes: has the newest save reached the transition date?
 #[tauri::command]
 fn transition_readiness(state: State<'_, AppState>) -> CmdResult<chronicle_transition::Readiness> {
     let dirs = transition_dirs(&state)?;
-    let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: Default::default() };
+    let ctx = chronicle_transition::Context {
+        registry: &state.registry,
+        dirs,
+        bridge: Default::default(),
+        converters: transition_converters(&state),
+    };
     let guard = relock(&state.campaign);
     let db = guard.as_ref().ok_or("no_campaign")?;
     chronicle_transition::readiness(db, &ctx).map_err(err)
@@ -752,7 +791,12 @@ async fn transition_prepare(
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
         let dirs = transition_dirs(&state)?;
-        let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: bridge.unwrap_or_default() };
+        let ctx = chronicle_transition::Context {
+            registry: &state.registry,
+            dirs,
+            bridge: bridge.unwrap_or_default(),
+            converters: transition_converters(&state),
+        };
         let mut guard = relock(&state.campaign);
         let db = guard.as_mut().ok_or("no_campaign")?;
         let emitter = app.clone();
@@ -790,7 +834,12 @@ async fn transition_generate(app: tauri::AppHandle) -> CmdResult<TransitionDone>
         let state = app.state::<AppState>();
         let plan = relock(&state.transition).clone().ok_or("no_prepared_transition")?;
         let dirs = transition_dirs(&state)?;
-        let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: plan.bridge.clone() };
+        let ctx = chronicle_transition::Context {
+            registry: &state.registry,
+            dirs,
+            bridge: plan.bridge.clone(),
+            converters: transition_converters(&state),
+        };
         let mut guard = relock(&state.campaign);
         let db = guard.as_mut().ok_or("no_campaign")?;
         let emitter = app.clone();
@@ -944,6 +993,9 @@ fn main() {
             import_ck3_save,
             import_hoi4_save,
             transition_readiness,
+            get_converters,
+            set_converter,
+            launch_converter,
             transition_prepare,
             transition_generate
         ])

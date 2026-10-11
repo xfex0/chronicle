@@ -122,6 +122,9 @@ export const backend = {
         wars: 18, events_added: 19, ownership_changes: 1081, semantic_values: 261, new_entities: 1168, stored_copy: "original/…", warnings: [],
       },
     })),
+  getConverters: () => call<Record<string, string>>("get_converters", {}, () => ({})),
+  setConverter: (route: string, path: string) => call<void>("set_converter", { route, path }, () => undefined),
+  launchConverter: (route: string) => call<string>("launch_converter", { route }, () => "ConverterFrontend.exe"),
   transitionReadiness: () =>
     call<Readiness>("transition_readiness", {}, () => ({
       route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris" },

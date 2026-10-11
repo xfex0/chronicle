@@ -29,3 +29,18 @@ Primary title: highest tier among the ruler's liege-less titles, ties by the ord
 
 Fixture: `tests/fixtures/ck3/1.0.2/mini_gamestate.txt` (small, same structure; the real save
 is not committed).
+
+## CK3 1.19.0.6 — verified on a real save (2026-10)
+
+"RealWorld" campaign, Emperor Alfonso of Spain, 1179.8.2 (bookmark 1178.10.1), 15.7 MB →
+93 MB text gamestate, `save_game_version=15`, 74 top-level sections. Same layout as 1.0.2 for
+everything Chronicle reads, with three differences:
+
+- **titles have no `name`** (only `key=k_castille` unless renamed in game) → Chronicle shows a
+  readable form of the key; the player's realm uses `meta_title_name` ("Spain");
+- **houses have `key=house_…`** instead of `name`/`localized_name`;
+- **faiths have `faith_type` + `tag`** instead of `template`.
+
+`landed_data` additionally holds `vassal_contracts`, `government`, `realm_capital`, `power`,
+`levy`, … Laws seen: `crown_authority_2`. 18 143 titles, 3 476 counties, 116 realms; the
+player's realm has 76 counties.

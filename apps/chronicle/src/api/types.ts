@@ -255,7 +255,7 @@ export type StepId = "find_save" | "check_save" | "backup" | "import_final" | "f
   | "geo_core" | "coefficients" | "build_world" | "preview" | "generate" | "validate" | "close_era" | "next_era";
 export type StepStatus = "pending" | "done" | "skipped" | "blocked" | "warning" | "failed";
 export interface TransitionStep { id: StepId; status: StepStatus; counts: Record<string, number>; note: string | null }
-export interface TransitionRoute { from: string; to: string; via: string | null; kind: "hoi4_to_stellaris" | "ck3_to_eu5" | "unsupported" }
+export interface TransitionRoute { from: string; to: string; via: string | null; kind: "hoi4_to_stellaris" | "ck3_to_eu5" | "vic3_to_hoi4_external" | "unsupported" }
 export interface BridgeParams { seed: number; start_year: number | null; empire_name: string; adjective: string }
 export interface TransitionPreview {
   source_countries: number; target_countries: number | null; merged: number; split: number; vanished: number; created: number;
@@ -266,10 +266,11 @@ export interface TransitionPlan {
   route: TransitionRoute; save: string | null; save_date: string | null; transition_date: string | null;
   steps: TransitionStep[]; preview: TransitionPreview | null; can_generate: boolean; blocked_reason: string | null;
   conversion_id: number | null; snapshot_id: number | null; generated: DesignsResult | null; finished: boolean; bridge: BridgeParams;
+  prepared_at: number; converter: string | null; external_output: string | null;
 }
 export interface Readiness {
   route: TransitionRoute | null; newest_save: SaveFileInfo | null; save_date: string | null; transition_date: string | null;
-  reached: boolean; support: "full" | "partial" | "none";
+  reached: boolean; support: "full" | "partial" | "external" | "none";
 }
 export interface TransitionDone { plan: TransitionPlan; campaign: CampaignSummary }
 

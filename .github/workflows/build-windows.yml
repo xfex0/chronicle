@@ -1,27 +1,46 @@
 # Builds the Chronicle Windows installer on GitHub — nothing to install locally.
-# Actions tab → build-windows → Run workflow (or push a tag like v0.1.0).
+#
+# Runs by itself after every successful "ci" run on main (tests already passed there, so they
+# are not repeated), or by hand: Actions tab → build-windows → Run workflow. Tags like v0.2.0
+# also attach the installer to a GitHub release.
 name: build-windows
 on:
   workflow_dispatch:
   push:
     tags: ["v*"]
+  workflow_run:
+    workflows: [ci]
+    types: [completed]
+    branches: [main]
+
+# A newer push cancels a build that is still running for an older one.
+concurrency:
+  group: build-windows-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # after ci, build exactly the commit ci tested
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
+          # one shared cache for every build of this branch
+          shared-key: chronicle-windows
           workspaces: |
             rust
             apps/chronicle/src-tauri
       - name: Build installer
         shell: pwsh
-        run: ./scripts/build-windows.ps1
+        # tests already ran in "ci" for automatic builds; manual and tag builds still run them
+        run: if ("${{ github.event_name }}" -eq "workflow_run") { ./scripts/build-windows.ps1 -SkipChecks } else { ./scripts/build-windows.ps1 }
       - uses: actions/upload-artifact@v4
         with:
           name: chronicle-windows

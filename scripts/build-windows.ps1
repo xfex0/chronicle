@@ -6,7 +6,9 @@
 
   Usage (PowerShell, from the repository root):
       powershell -ExecutionPolicy Bypass -File scripts\build-windows.ps1
+      ... -SkipChecks   skip the Rust tests (CI already ran them in the "ci" workflow)
 #>
+param([switch]$SkipChecks)
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 $App  = Join-Path $Root "apps\chronicle"
@@ -26,14 +28,18 @@ Need node  "Install Node.js 20 LTS: https://nodejs.org"
 Need npm   "npm comes with Node.js"
 Need cargo "Install Rust: https://rustup.rs"
 
-Step "Rust core tests / Тести ядра"
-Push-Location (Join-Path $Root "rust")
-try {
-    Run { cargo test --workspace --quiet } "cargo test"
-    $demo = Join-Path ([System.IO.Path]::GetTempPath()) ("chronicle-demo-" + [guid]::NewGuid())
-    Run { cargo run -q -p chronicle-devtools -- demo $demo } "demo campaign"
-    Run { cargo run -q -p chronicle-devtools -- check $demo } "self-test"
-} finally { Pop-Location }
+if ($SkipChecks) {
+    Step "Rust core tests skipped (already run by CI) / Тести пропущено (їх уже виконав CI)"
+} else {
+    Step "Rust core tests / Тести ядра"
+    Push-Location (Join-Path $Root "rust")
+    try {
+        Run { cargo test --workspace --quiet } "cargo test"
+        $demo = Join-Path ([System.IO.Path]::GetTempPath()) ("chronicle-demo-" + [guid]::NewGuid())
+        Run { cargo run -q -p chronicle-devtools -- demo $demo } "demo campaign"
+        Run { cargo run -q -p chronicle-devtools -- check $demo } "self-test"
+    } finally { Pop-Location }
+}
 
 # Version: every CI build gets its own number (0.1.<run>) so the app and the installer show
 # which build is installed; local builds stay 0.1.0 and are marked "dev".

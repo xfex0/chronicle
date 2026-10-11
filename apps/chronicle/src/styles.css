@@ -331,6 +331,7 @@ code { font: 0.85em ui-monospace, Consolas, monospace; }
   display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 5px 12px; border-radius: 999px; cursor: pointer;
   color: #e9e2cd; background: rgba(8, 12, 22, .5); border: 1px solid rgba(255, 255, 255, .18); font-size: .85rem;
 }
+.game-tabs button.is-empty { opacity: .55; }
 .game-tabs button.is-active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
 .era-slider { padding: 14px 32px 6px; background: var(--paper); }

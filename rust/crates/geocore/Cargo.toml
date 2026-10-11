@@ -9,3 +9,8 @@ license.workspace = true
 [dependencies]
 serde.workspace = true
 thiserror.workspace = true
+png.workspace = true
+paradox-parser.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

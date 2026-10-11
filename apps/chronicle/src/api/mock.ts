@@ -175,5 +175,6 @@ export function mockTransition(finished: boolean): TransitionPlan {
     can_generate: true, blocked_reason: null, conversion_id: 1, snapshot_id: 3,
     generated: finished ? { file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt", backup: null, empire_name: "Terran Federation", replaced: false, warnings: [] } : null,
     finished, bridge: { seed: 45819283, start_year: null, empire_name: "Terran Federation", adjective: "Terran" },
+    prepared_at: 1791700000, converter: null, external_output: null,
   };
 }

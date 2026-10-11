@@ -33,6 +33,7 @@ winreg = "0.52"
 uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
 sha2 = "0.10"
+png = "0.17"
 
 [profile.release]
 lto = "thin"

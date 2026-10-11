@@ -122,7 +122,11 @@ fn period_warning(r: Result<(), DbError>, what: &str, warnings: &mut Vec<String>
 pub fn import_world(db: &mut CampaignDb, world: &Ck3World, save: &Path) -> Result<ImportReport, ImportError> {
     let map = Ck3Mapping::builtin();
     let date = world.date.ok_or(ImportError::NoDate)?;
-    let version_verified = world.version.as_ref().is_some_and(|v| map.verified_versions.contains(v));
+    // "1.19" in the list covers every 1.19.x patch; "1.0.2" only itself
+    let version_verified = world
+        .version
+        .as_ref()
+        .is_some_and(|v| map.verified_versions.iter().any(|ok| v == ok || v.starts_with(&format!("{ok}."))));
     let mut rep = ImportReport {
         game_version: world.version.clone(),
         version_verified,
@@ -231,7 +235,12 @@ fn import_body(
         let culture = ruler.and_then(|r| r.culture.as_ref()).and_then(|c| culture_ids.get(c));
         let faith = ruler.and_then(|r| r.faith.as_ref()).and_then(|f| faith_ids.get(f));
         let created = title.history.iter().rev().find(|h| h.kind == HistoryKind::Created).map(|h| h.date);
-        let name = if title.name.is_empty() { title.key.clone() } else { title.name.clone() };
+        // the player's realm: the game's own name for it (e.g. "Spain") from the save metadata
+        let name = match (&world.player, &world.player_title_name) {
+            (Some(p), Some(n)) if *p == realm.ruler && !n.is_empty() => n.clone(),
+            _ if title.name.is_empty() => title.key.clone(),
+            _ => title.name.clone(),
+        };
         db.upsert_country(&country, &name, culture, faith, created)?;
         if world.player.as_deref() == Some(realm.ruler.as_str()) {
             rep.player_realm = Some(name.clone());
@@ -498,6 +507,22 @@ mod tests {
         let change = ev.iter().find(|e| e.event_type == "territory_changed_owner").unwrap();
         assert_eq!((change.evidence.as_str(), change.date_precision.as_str()), ("inferred", "range"));
         assert_eq!((change.date, change.date_to), (PartialDate::ymd(923, 4, 28), Some(PartialDate::ymd(924, 1, 1))));
+    }
+
+    #[test]
+    fn imports_a_1_19_save() {
+        let tmp = tempfile::tempdir().unwrap();
+        let mut db = CampaignDb::create(&tmp.path().join("camp"), "T", &CampaignSettings::new("ck3", 1),
+                                        &GameRegistry::builtin().unwrap()).unwrap();
+        let save = tmp.path().join("RealWorld.ck3");
+        let fixture: &[u8] = include_bytes!("../../../../tests/fixtures/ck3/1.19/mini_gamestate.txt");
+        std::fs::write(&save, fixture).unwrap();
+        let world = crate::read::read_gamestate(fixture).unwrap();
+        let r = import_world(&mut db, &world, &save).unwrap();
+        assert!(r.version_verified, "1.19.x is a verified layout");
+        assert_eq!(r.player_realm.as_deref(), Some("Spain"));
+        assert_eq!((r.realms, r.counties), (2, 3));
+        assert!(r.warnings.is_empty(), "{:?}", r.warnings);
     }
 
     #[test]

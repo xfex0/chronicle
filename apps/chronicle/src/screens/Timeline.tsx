@@ -63,10 +63,12 @@ export function Timeline({ app }: { app: AppData }) {
   }, [campaign?.id, campaign?.current_date]);
 
   // games present in the journal, in chain order
-  const games = useMemo(() => {
-    const present = new Set((events ?? []).map((e) => e.game));
-    return [...registry.chain, ...Object.keys(registry.games)].filter((g, i, a) => present.has(g) && a.indexOf(g) === i);
-  }, [events, registry.chain, registry.games]);
+  const present = useMemo(() => new Set((events ?? []).map((e) => e.game)), [events]);
+  // every era of the campaign chain gets a tab (dimmed while it has no events yet)
+  const games = useMemo(
+    () => [...registry.chain, ...Object.keys(registry.games)].filter((g, i, a) => a.indexOf(g) === i && (registry.chain.includes(g) || present.has(g))),
+    [present, registry.chain, registry.games],
+  );
 
   // open on the campaign's current game when it has events
   const [initialised, setInitialised] = useState(false);
@@ -182,7 +184,7 @@ export function Timeline({ app }: { app: AppData }) {
         <nav className="game-tabs" aria-label={t("tl.game")}>
           <button className={!game ? "is-active" : ""} onClick={() => setGame("")}>{t("tl.allGames")}</button>
           {games.map((g) => (
-            <button key={g} className={g === game ? "is-active" : ""} onClick={() => setGame(g)}>
+            <button key={g} className={`${g === game ? "is-active" : ""} ${present.has(g) ? "" : "is-empty"}`} title={present.has(g) ? undefined : t("tl.eraEmpty")} onClick={() => setGame(g)}>
               <Icon name={g} size={16} /> {registry.games[g]?.display_name ?? g}
             </button>
           ))}

@@ -59,6 +59,9 @@ games:
     save_formats: { plaintext: planned, compressed: planned, binary: planned }
     save_extensions: [".eu5"]   # unverified
   victoria3:
+    # Verified on 1.5.7 and 1.5.12 saves: "SAV01…" header + (metadata) + ZIP, gamestate
+    # token-encoded binary → not readable without non-distributable tokens. Era transitions to
+    # HoI4 run through the external Paradox Game Converters converter (Chronicle orchestrates).
     display_name: "Victoria 3"
     steam_app_id: 529340
     status: planned
@@ -70,7 +73,7 @@ games:
     save_dir:
       documents_subpath: ["Paradox Interactive/Victoria 3/save games"]
       verified: false
-    save_formats: { plaintext: planned, compressed: planned, binary: planned }
+    save_formats: { plaintext: planned, compressed: planned, binary: unsupported }
     save_extensions: [".v3"]
   hoi4:
     # Verified on 1.19.3 "Operation Postern": default saves start with "HOI4bin" (token-encoded
