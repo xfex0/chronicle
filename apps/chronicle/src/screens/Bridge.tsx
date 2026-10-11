@@ -369,15 +369,15 @@ function TransitionPanel({ app, civ, seed, result }: { app: AppData; civ: Civili
       {done && (
         <div className="notice">
           <p><strong>{t("tr.done", { name })}</strong></p>
-          <p className="muted">{t("tr.where", { path: done.result.mod_dir })}</p>
-          <p className="muted">{done.result.template_source === "builtin" ? t("tr.templateBuiltin") : t("tr.templateGame")}</p>
+          <p className="muted">{t("tr.where", { path: done.result.file })}</p>
+          {done.result.backup && <p className="muted">{t("tr.backup", { path: done.result.backup })}</p>}
           {done.events_added !== null && <p className="muted">{t("tr.journal", { n: done.events_added })}</p>}
           <ol className="steps">
             <li>{t("tr.step1")}</li>
             <li>{t("tr.step2")}</li>
             <li>{t("tr.step3", { name })}</li>
           </ol>
-          {done.result.warnings.length > 0 && <ul className="reasons">{done.result.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+          {done.result.warnings.includes("old_chronicle_mod_installed") && <p className="notice is-warning">{t("tr.oldMod")}</p>}
         </div>
       )}
     </section>

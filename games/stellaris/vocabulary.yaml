@@ -28,27 +28,27 @@ ethics:
 # forbids_ethics: none of these may be chosen (normal or fanatic)
 # authorities: allowed authorities (empty = any)
 civics:
-  technocracy:             { name: "Technocracy" }
-  beacon_of_liberty:       { name: "Beacon of Liberty", authorities: [democratic], requires_ethics: [egalitarian] }
+  technocracy:             { name: "Technocracy", verified: true }
+  beacon_of_liberty:       { name: "Beacon of Liberty", authorities: [democratic], requires_ethics: [egalitarian], verified: true }
   parliamentary_system:    { name: "Parliamentary System", authorities: [democratic], verified: true }
   idealistic_foundation:   { name: "Idealistic Foundation", requires_ethics: [egalitarian], verified: true }
-  distinguished_admiralty: { name: "Distinguished Admiralty" }
+  distinguished_admiralty: { name: "Distinguished Admiralty", verified: true }
   nationalistic_zeal:      { name: "Nationalistic Zeal", requires_ethics: [militarist], verified: true }
-  citizen_service:         { name: "Citizen Service", authorities: [democratic, oligarchic], requires_ethics: [militarist] }
+  citizen_service:         { name: "Citizen Service", authorities: [democratic, oligarchic], requires_ethics: [militarist], verified: true }
   police_state:            { name: "Police State", forbids_ethics: [egalitarian], verified: true }
-  imperial_cult:           { name: "Imperial Cult", authorities: [imperial], requires_ethics: [authoritarian, spiritualist] }
-  exalted_priesthood:      { name: "Exalted Priesthood", authorities: [oligarchic, dictatorial], requires_ethics: [spiritualist] }
+  imperial_cult:           { name: "Imperial Cult", authorities: [imperial], requires_ethics: [authoritarian, spiritualist], verified: true }
+  exalted_priesthood:      { name: "Exalted Priesthood", authorities: [oligarchic, dictatorial], requires_ethics: [spiritualist], verified: true }
   mining_guilds:           { name: "Mining Guilds", verified: true }
-  agrarian_idyll:          { name: "Agrarian Idyll", requires_ethics: [pacifist] }
+  agrarian_idyll:          { name: "Agrarian Idyll", requires_ethics: [pacifist], verified: true }
   inward_perfection:       { name: "Inward Perfection", requires_ethics: [pacifist, xenophobe] }
   free_haven:              { name: "Free Haven", requires_ethics: [xenophile], dlc: true, verified: true }
   aristocratic_elite:      { name: "Aristocratic Elite", authorities: [oligarchic, imperial], forbids_ethics: [egalitarian], verified: true }
   environmentalist:        { name: "Environmentalist", verified: true }
-  corvee_system:           { name: "Corvée System", forbids_ethics: [egalitarian] }
+  corvee_system:           { name: "Corvée System", forbids_ethics: [egalitarian], verified: true }
   diplomatic_corps:        { name: "Diplomatic Corps", forbids_ethics: [xenophobe] }
 
 origins:
   prosperous_unification: { name: "Prosperous Unification", key: origin_default, verified: true }
   post_apocalyptic:       { name: "Post-Apocalyptic", key: origin_post_apocalyptic, dlc: true, verified: true }
   doomsday:               { name: "Doomsday", key: origin_doomsday, dlc: true }
-  mechanists:             { name: "Mechanists", key: origin_mechanists, requires_ethics: [materialist] }
+  mechanists:             { name: "Mechanists", key: origin_mechanists, requires_ethics: [materialist], verified: true }

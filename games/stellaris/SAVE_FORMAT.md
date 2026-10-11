@@ -30,3 +30,41 @@ Not observed (still unverified, not necessarily wrong): `civic_technocracy`,
 
 Fixture: `tests/fixtures/stellaris/3.14.15/mini_gamestate.txt` (small excerpt with the same
 structure; the real save is not committed).
+
+## Prescripted empire block (from a player's install, 2026-10)
+
+The game's own human block in `prescripted_countries/` contains `playable =
+empire_design_never`, `flag = empire_human_1`, `ignore_portrait_duplication = yes`,
+`initializer = "sol_system_initializer"`, `empire_flag`, `ruler` (with `leader_class`) and a
+species with `trait = "trait_organic"`. Chronicle's generated empire drops `playable` (it
+hides an empire from the selection screen) and keeps everything else.
+
+## Stellaris 4.5.2 "Cygnus" — prescripted empires (game files, 2026-10)
+
+- `prescripted_countries/00_top_countries.txt`: `humans1` / `humans2` are **stubs** kept for
+  old mods (`playable = empire_design_never`); the real UNE / Commonwealth of Man are
+  `humans1_1` / `humans2_1` (no `playable` line, `spawn_enabled = no`).
+- Every design names a `government` (`gov_representative_democracy` for democratic UNE,
+  `gov_military_dictatorship`, `gov_executive_committee`, `gov_star_empire`, …).
+- DLC designs use `playable = has_<dlc>` scripted triggers.
+- Keys seen in 4.5 designs include `civic_technocracy`, `civic_beacon_of_liberty`,
+  `civic_free_haven`, `civic_distinguished_admiralty`, `civic_citizen_service`,
+  `civic_exalted_priesthood`, `civic_imperial_cult`, `civic_agrarian_idyll`,
+  `civic_corvee_system`, `origin_mechanists` — all keys Chronicle's bridge may choose.
+
+## Player's empire designs — `user_empire_designs_v3.4.txt` (4.5.2, from a player's file)
+
+`Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt`, one top-level entry per
+design, keyed by the quoted design name: `key`, `ship_prefix={key [literal=yes]}`,
+`species={class portrait species_name={…} species_plural={…} species_adjective={…} name_list
+gender trait…}`, optional `secondary_species`, `name={key literal=yes}`, `adjective={…}`,
+`authority`, `government`, `is_nomadic`, `advisor_voice_type`, `planet_name={…}`,
+`planet_class`, `system_name={…}`, `initializer`, `graphical_culture`,
+`city_graphical_culture`, `empire_flag={icon background colors{6 entries}}`,
+`ruler={gender name={full_names={key [literal]}} portrait texture evolution_mask attachment
+clothes trait leader_class}`, `spawn_as_fallen`, `ignore_portrait_duplication`, `room`,
+`spawn_enabled`, `ethic`…, `civics={…}`, `origin`. Note: designs use `species_name` where
+prescripted empires use `name`.
+
+Chronicle writes Earth's empire here (backup first, other designs untouched, same-name entry
+replaced). This needs no mod, no playset and no version match.
