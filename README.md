@@ -25,7 +25,8 @@ Interface: English and Ukrainian. Windows installer for everyone (no developer t
 
 - Modern Era Bridge (prototype): load Earth from a HoI4 text save (or describe it with sliders), simulate 1948–2200 and get
   a Stellaris empire (authority, ethics, civics, origin) with reasons and confidence; write
-  the simulated history into the campaign timeline or export an empire card.
+  the simulated history into the campaign timeline, export an empire card, or create a
+  Stellaris mod with Earth's empire (built on the game's own human empire definition).
 - Reads the player's empire from a real Stellaris save (verified on 3.14.15, ironman too) and
   compares it with the suggested empire.
 

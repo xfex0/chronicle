@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { BridgeResult, CivilizationState, Decision, Hoi4Summary, Ideology, Indicator, Reason, StellarisCompare, StellarisVocabulary } from "../api/types";
+import type { BridgeResult, CivilizationState, Decision, Hoi4Summary, Ideology, Indicator, Reason, StellarisCompare, StellarisTransition, StellarisVocabulary } from "../api/types";
 import { errorText, useI18n, type Key } from "../i18n";
 
 const GROUPS: [Key, Indicator[]][] = [
@@ -11,6 +11,9 @@ const GROUPS: [Key, Indicator[]][] = [
 ];
 const IDEOLOGIES: Ideology[] = ["democracy", "communism", "fascism", "monarchy", "non_aligned"];
 const DEFAULT_SEED = 45819283;
+const DEFAULT_START = 1948;
+const MIN_START = 1936;
+const MAX_START = 2190;
 
 export function Bridge({ app }: { app: AppData }) {
   const { t, lang } = useI18n();
@@ -18,6 +21,7 @@ export function Bridge({ app }: { app: AppData }) {
   const [vocab, setVocab] = useState<StellarisVocabulary | null>(null);
   const [civ, setCiv] = useState<CivilizationState | null>(null);
   const [seed, setSeed] = useState(String(DEFAULT_SEED));
+  const [startYear, setStartYear] = useState(String(DEFAULT_START));
   const [result, setResult] = useState<BridgeResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [actual, setActual] = useState<StellarisCompare | null>(null);
@@ -34,12 +38,14 @@ export function Bridge({ app }: { app: AppData }) {
   }, []);
 
   const seedNum = /^\d{1,15}$/.test(seed.trim()) ? Number(seed.trim()) : null;
+  const yearNum = /^\d{4}$/.test(startYear.trim()) && Number(startYear) >= MIN_START && Number(startYear) <= MAX_START ? Number(startYear) : null;
+  const hoi4Year = hoi4?.date ? Number(hoi4.date.split(".")[0]) : null;
 
   async function simulate() {
-    if (!civ || seedNum === null) return;
+    if (!civ || seedNum === null || yearNum === null) return;
     setBusy(true);
     try {
-      setResult(await backend.bridgeRun(civ, seedNum));
+      setResult(await backend.bridgeRun(civ, seedNum, yearNum));
     } catch (e) {
       fail(e);
     } finally {
@@ -54,20 +60,20 @@ export function Bridge({ app }: { app: AppData }) {
   }
 
   async function commit() {
-    if (!civ || seedNum === null) return;
+    if (!civ || seedNum === null || yearNum === null) return;
     try {
-      app.notify(t("br.committed", { n: await backend.bridgeCommit(civ, seedNum) }));
+      app.notify(t("br.committed", { n: await backend.bridgeCommit(civ, seedNum, yearNum) }));
     } catch (e) {
       fail(e);
     }
   }
 
   async function exportCard() {
-    if (!civ || seedNum === null) return;
+    if (!civ || seedNum === null || yearNum === null) return;
     const folder = await backend.pickFolder();
     if (!folder) return;
     try {
-      app.notify(t("br.exported", { path: await backend.bridgeExport(civ, seedNum, folder, lang) }));
+      app.notify(t("br.exported", { path: await backend.bridgeExport(civ, seedNum, yearNum, folder, lang) }));
     } catch (e) {
       fail(e);
     }
@@ -80,6 +86,8 @@ export function Bridge({ app }: { app: AppData }) {
       const r = await backend.hoi4ReadWorld(path);
       setCiv(r.state);
       setHoi4(r.summary);
+      const y = r.summary.date ? Number(r.summary.date.split(".")[0]) : NaN;
+      if (y >= MIN_START && y <= MAX_START) setStartYear(String(y));
       setResult(null);
     } catch (e) {
       fail(e);
@@ -90,7 +98,7 @@ export function Bridge({ app }: { app: AppData }) {
     const path = await backend.pickFile();
     if (!path) return;
     try {
-      setActual(await backend.stellarisReadEmpire(path, result ? civ : null, result ? seedNum : null));
+      setActual(await backend.stellarisReadEmpire(path, result ? civ : null, result ? seedNum : null, result ? result.start_year : null));
     } catch (e) {
       fail(e);
     }
@@ -152,6 +160,17 @@ export function Bridge({ app }: { app: AppData }) {
               {IDEOLOGIES.map((i) => <option key={i} value={i}>{t(`ideo.${i}` as Key)}</option>)}
             </select>
           </label>
+          <label className="inline-field">{t("br.startYear")}
+            <input className="short" value={startYear} inputMode="numeric" onChange={(e) => { setStartYear(e.target.value); setResult(null); }} />
+          </label>
+          <div className="row wrap examples">
+            {[MIN_START, DEFAULT_START, ...(hoi4Year && hoi4Year !== MIN_START && hoi4Year !== DEFAULT_START ? [hoi4Year] : [])].map((y) => (
+              <button key={y} className="chip" onClick={() => { setStartYear(String(y)); setResult(null); }}>
+                {y === hoi4Year ? t("br.fromSave", { year: y }) : String(y)}
+              </button>
+            ))}
+          </div>
+          {yearNum === null && <span className="field-error">{t("br.startYearInvalid", { min: MIN_START, max: MAX_START })}</span>}
           <label className="inline-field">{t("br.seed")}
             <input className="short" value={seed} inputMode="numeric" onChange={(e) => { setSeed(e.target.value); setResult(null); }} />
           </label>
@@ -159,12 +178,15 @@ export function Bridge({ app }: { app: AppData }) {
       </div>
 
       <div className="actions">
-        <button className="primary" onClick={simulate} disabled={busy || seedNum === null}>
-          {busy ? t("br.running") : t("br.run")}
+        <button className="primary" onClick={simulate} disabled={busy || seedNum === null || yearNum === null}>
+          {busy ? t("br.running") : t("br.run", { start: yearNum ?? "…" })}
         </button>
       </div>
 
       {result && vocab && <ResultView result={result} vocab={vocab} />}
+      {result && seedNum !== null && result.problems.length === 0 && (
+        <TransitionPanel key={`${result.seed}-${result.start_year}-${result.design.authority}-${result.design.origin}`} app={app} civ={civ} seed={seedNum} result={result} />
+      )}
 
       {result && (
         <div className="actions">
@@ -219,7 +241,7 @@ function ResultView({ result, vocab }: { result: BridgeResult; vocab: StellarisV
       </div>
       <p className="hint">{t("br.namesNote")}</p>
 
-      <h2>{t("br.history")}</h2>
+      <h2>{t("br.history", { start: result.start_year })}</h2>
       <ol className="journal">
         {result.run.events.map((e, i) => (
           <li key={i} className={`journal-row${e.kind === "nuclear_war" || e.kind === "ecological_collapse" ? " is-alarm" : ""}`}>
@@ -229,7 +251,7 @@ function ResultView({ result, vocab }: { result: BridgeResult; vocab: StellarisV
         ))}
       </ol>
 
-      <h2>{t("br.change")}</h2>
+      <h2>{t("br.change", { start: result.start_year })}</h2>
       <Changes result={result} />
     </>
   );
@@ -304,5 +326,60 @@ function ActualEmpire({ data, vocab }: { data: StellarisCompare; vocab: Stellari
       )}
       <p className="hint">{t("st.raw")}: <code>{[e.raw_authority, ...e.raw_ethics, ...e.raw_civics, e.raw_origin].filter(Boolean).join(" ")}</code></p>
     </div>
+  );
+}
+
+function suggestedName(r: BridgeResult): string {
+  if (r.design.origin === "post_apocalyptic") return "Terran Remnant";
+  return ({ democratic: "Terran Federation", oligarchic: "Terran Commonwealth", dictatorial: "Terran Directorate", imperial: "Terran Imperium" } as Record<string, string>)[r.design.authority] ?? "Terran Union";
+}
+
+function TransitionPanel({ app, civ, seed, result }: { app: AppData; civ: CivilizationState; seed: number; result: BridgeResult }) {
+  const { t } = useI18n();
+  const [name, setName] = useState(suggestedName(result));
+  const [adjective, setAdjective] = useState("Terran");
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<StellarisTransition | null>(null);
+
+  async function create() {
+    setBusy(true);
+    try {
+      const r = await backend.stellarisCreateMod(civ, seed, result.start_year, name, adjective);
+      setDone(r);
+      if (r.campaign) app.setCampaign(r.campaign);
+    } catch (e) {
+      app.notify(errorText(t, errorCode(e)), "error");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="transition-panel">
+      <h2>{t("tr.title")}</h2>
+      <p className="hint">{t("tr.hint")}</p>
+      <div className="row wrap">
+        <label className="inline-field">{t("tr.name")}<input value={name} onChange={(e) => setName(e.target.value)} /></label>
+        <label className="inline-field">{t("tr.adjective")}<input className="short" value={adjective} onChange={(e) => setAdjective(e.target.value)} /></label>
+      </div>
+      <p className="hint">{t("tr.latin")}</p>
+      <div className="actions">
+        <button className="primary" onClick={create} disabled={busy || !name.trim()}>{busy ? t("tr.creating") : t("tr.create")}</button>
+      </div>
+      {done && (
+        <div className="notice">
+          <p><strong>{t("tr.done", { name })}</strong></p>
+          <p className="muted">{t("tr.where", { path: done.result.mod_dir })}</p>
+          <p className="muted">{done.result.template_source === "builtin" ? t("tr.templateBuiltin") : t("tr.templateGame")}</p>
+          {done.events_added !== null && <p className="muted">{t("tr.journal", { n: done.events_added })}</p>}
+          <ol className="steps">
+            <li>{t("tr.step1")}</li>
+            <li>{t("tr.step2")}</li>
+            <li>{t("tr.step3", { name })}</li>
+          </ol>
+          {done.result.warnings.length > 0 && <ul className="reasons">{done.result.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+        </div>
+      )}
+    </section>
   );
 }

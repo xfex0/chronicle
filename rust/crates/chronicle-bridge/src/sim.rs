@@ -33,6 +33,11 @@ fn apply(c: &mut CivilizationState, effects: &Weights) {
 }
 
 pub fn simulate(start: &CivilizationState, seed: u64, cfg: &BridgeConfig) -> BridgeRun {
+    simulate_from(start, seed, cfg, cfg.start_year)
+}
+
+/// Simulate from any year (e.g. the HoI4 save's year, 1936 or later) to `cfg.end_year`.
+pub fn simulate_from(start: &CivilizationState, seed: u64, cfg: &BridgeConfig, start_year: i32) -> BridgeRun {
     let mut c = start.clone();
     let d = &cfg.drift;
     let ev = &cfg.events;
@@ -41,7 +46,7 @@ pub fn simulate(start: &CivilizationState, seed: u64, cfg: &BridgeConfig) -> Bri
     let mut history = Vec::new();
     let mut reached: BTreeSet<String> = BTreeSet::new();
     let mut unified = false;
-    let mut year = cfg.start_year;
+    let mut year = start_year;
     let push = |events: &mut Vec<BridgeEvent>, year: i32, kind: &str| {
         events.push(BridgeEvent { year, kind: kind.to_string() });
     };
@@ -177,6 +182,19 @@ mod tests {
         assert_eq!(a.final_state, b.final_state);
         let differs = (2..30).any(|s| simulate(&start, s, cfg).events != a.events);
         assert!(differs, "different seeds should produce different histories");
+    }
+
+    #[test]
+    fn start_year_is_selectable() {
+        let cfg = BridgeConfig::builtin();
+        let start = presets()[0].1.clone();
+        let from_1936 = simulate_from(&start, 7, cfg, 1936);
+        assert_eq!(from_1936.history.first().map(|h| h.0), Some(1936));
+        assert_eq!(from_1936.history.len(), 28, "1936..2196 in 10-year steps + final state");
+        assert!(from_1936.events.iter().all(|e| (1936..2200).contains(&e.year)));
+        let late = simulate_from(&start, 7, cfg, 2150);
+        assert_eq!(late.history.len(), 6);
+        assert_eq!(simulate(&start, 7, cfg).history.first().map(|h| h.0), Some(1948), "default stays 1948");
     }
 
     #[test]

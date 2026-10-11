@@ -129,7 +129,7 @@ export const mockBridge = {
     origins: { prosperous_unification: "Prosperous Unification" },
   }),
   result: (state: CivilizationState, seed: number): BridgeResult => ({
-    seed, start: state, problems: [],
+    seed, start_year: 1948, start: state, problems: [],
     run: {
       final_state: state, flags: ["climate_crisis", "earth_unified"], history: [],
       events: [{ year: 1978, kind: "space_orbit" }, { year: 2018, kind: "space_moon" }, { year: 2028, kind: "climate_crisis" },

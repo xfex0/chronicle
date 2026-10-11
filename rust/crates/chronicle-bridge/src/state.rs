@@ -69,6 +69,8 @@ pub enum StateError {
     Unknown(String),
     #[error("blocs must be between 1 and 6")]
     Blocs,
+    #[error("the bridge can start between {min} and {max}, not {year}")]
+    StartYear { year: i32, min: i32, max: i32 },
 }
 
 impl CivilizationState {

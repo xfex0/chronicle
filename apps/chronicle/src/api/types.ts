@@ -195,6 +195,7 @@ export interface EmpireDesign {
 }
 export interface BridgeResult {
   seed: number;
+  start_year: number;
   start: CivilizationState;
   run: { final_state: CivilizationState; events: BridgeEvent[]; flags: string[]; history: [number, CivilizationState][] };
   design: EmpireDesign;
@@ -235,3 +236,6 @@ export interface Ck3ImportReport {
 export interface Ck3Import { report: Ck3ImportReport; campaign: CampaignSummary }
 
 export interface SaveFileInfo { path: string; name: string; size: number; modified: number }
+
+export interface ModResult { mod_dir: string; launcher_file: string; files: string[]; template_source: string; warnings: string[] }
+export interface StellarisTransition { result: ModResult; events_added: number | null; campaign: CampaignSummary | null }

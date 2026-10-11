@@ -4,7 +4,7 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, SaveFileInfo, StellarisCompare, StellarisVocabulary,
+  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
 } from "./types";
 import { mockBootstrap, mockBridge, mockDev, mockEvents } from "./mock";
 
@@ -79,11 +79,21 @@ export const backend = {
 
   // Modern Era Bridge
   bridgePresets: () => call<[string, CivilizationState][]>("bridge_presets", {}, mockBridge.presets),
-  bridgeRun: (state: CivilizationState, seed: number) =>
-    call<BridgeResult>("bridge_run", { state, seed }, () => mockBridge.result(state, seed)),
-  bridgeCommit: (civ: CivilizationState, seed: number) => call<number>("bridge_commit", { civ, seed }, () => 7),
-  bridgeExport: (civ: CivilizationState, seed: number, folder: string, language: Language) =>
-    call<string>("bridge_export", { civ, seed, folder, language }, () => `${folder}/chronicle_stellaris_empire_${seed}.md`),
+  bridgeRun: (state: CivilizationState, seed: number, startYear: number) =>
+    call<BridgeResult>("bridge_run", { state, seed, startYear }, () => ({ ...mockBridge.result(state, seed), start_year: startYear })),
+  bridgeCommit: (civ: CivilizationState, seed: number, startYear: number) =>
+    call<number>("bridge_commit", { civ, seed, startYear }, () => 7),
+  bridgeExport: (civ: CivilizationState, seed: number, startYear: number, folder: string, language: Language) =>
+    call<string>("bridge_export", { civ, seed, startYear, folder, language }, () => `${folder}/chronicle_stellaris_empire_${seed}.md`),
+  stellarisCreateMod: (civ: CivilizationState, seed: number, startYear: number, empireName: string, adjective: string) =>
+    call<StellarisTransition>("stellaris_create_mod", { civ, seed, startYear, empireName, adjective }, () => ({
+      result: {
+        mod_dir: "C:/Users/me/Documents/Paradox Interactive/Stellaris/mod/chronicle_earth",
+        launcher_file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/mod/chronicle_earth.mod",
+        files: [], template_source: "game: …/prescripted_countries/00_top_prescripted_countries.txt", warnings: [],
+      },
+      events_added: 7, campaign: null,
+    })),
   bridgeVocabulary: () => call<StellarisVocabulary>("bridge_vocabulary", {}, mockBridge.vocabulary),
   importCk3: (path: string) =>
     call<Ck3Import>("import_ck3_save", { path }, () => ({
@@ -95,8 +105,8 @@ export const backend = {
       },
     })),
   hoi4ReadWorld: (path: string) => call<Hoi4Civilization>("hoi4_read_world", { path }, mockBridge.hoi4),
-  stellarisReadEmpire: (path: string, civ: CivilizationState | null, seed: number | null) =>
-    call<StellarisCompare>("stellaris_read_empire", { path, civ, seed }, mockBridge.compare),
+  stellarisReadEmpire: (path: string, civ: CivilizationState | null, seed: number | null, startYear: number | null) =>
+    call<StellarisCompare>("stellaris_read_empire", { path, civ, seed, startYear }, mockBridge.compare),
 
   pickFolder: () => pick(true),
   pickFile: () => pick(false),

@@ -369,8 +369,12 @@ fn bridge_presets() -> Vec<(String, chronicle_bridge::CivilizationState)> {
 }
 
 #[tauri::command]
-async fn bridge_run(state: chronicle_bridge::CivilizationState, seed: u64) -> CmdResult<chronicle_bridge::BridgeResult> {
-    tauri::async_runtime::spawn_blocking(move || chronicle_bridge::run(&state, seed).map_err(err))
+async fn bridge_run(
+    state: chronicle_bridge::CivilizationState,
+    seed: u64,
+    start_year: Option<i32>,
+) -> CmdResult<chronicle_bridge::BridgeResult> {
+    tauri::async_runtime::spawn_blocking(move || chronicle_bridge::run_from(&state, seed, start_year).map_err(err))
         .await
         .map_err(err)?
 }
@@ -383,6 +387,39 @@ fn bridge_importance(kind: &str) -> u8 {
     }
 }
 
+/// Write the simulated 1948–2200 history into a campaign journal (transition backup first).
+fn write_bridge_history(db: &CampaignDb, r: &chronicle_bridge::BridgeResult) -> Result<usize, String> {
+    db.backup(BackupKind::Transition, "modern era bridge").map_err(err)?;
+    let step = chronicle_bridge::BridgeConfig::builtin().step_years;
+    let mut added = 0;
+    for e in &r.run.events {
+        let key = format!("bridge:{}:{}:{}:{}", r.seed, r.start_year, e.year, e.kind);
+        if db.event_exists(&e.kind, PartialDate::year(e.year), &key).map_err(err)? {
+            continue;
+        }
+        db.add_event(&chronicle_db::NewEvent {
+            date_to: Some(PartialDate::year(e.year + step - 1)),
+            game_version: Some(chronicle_core::CHRONICLE_VERSION),
+            payload: serde_json::json!({ "key": key, "simulated": true, "seed": r.seed, "start_year": r.start_year }),
+            importance: bridge_importance(&e.kind),
+            ..chronicle_db::NewEvent::simple(PartialDate::year(e.year), "modern_bridge", &e.kind, chronicle_core::EventOrigin::Converter)
+        })
+        .map_err(err)?;
+        added += 1;
+    }
+    let key = format!("bridge:{}:{}:design", r.seed, r.start_year);
+    if !db.event_exists("stellaris_empire_designed", PartialDate::ymd(2200, 1, 1), &key).map_err(err)? {
+        db.add_event(&chronicle_db::NewEvent {
+            payload: serde_json::json!({ "key": key, "simulated": true, "seed": r.seed, "design": &r.design }),
+            importance: 5,
+            ..chronicle_db::NewEvent::simple(PartialDate::ymd(2200, 1, 1), "stellaris", "stellaris_empire_designed", chronicle_core::EventOrigin::Converter)
+        })
+        .map_err(err)?;
+        added += 1;
+    }
+    Ok(added)
+}
+
 /// Write the simulated 1948–2200 history into the open campaign's journal. The run is redone
 /// here from (state, seed) — the frontend never sends results the backend has to trust.
 #[tauri::command]
@@ -390,29 +427,68 @@ fn bridge_commit(
     state: State<'_, AppState>,
     civ: chronicle_bridge::CivilizationState,
     seed: u64,
+    start_year: Option<i32>,
 ) -> CmdResult<usize> {
-    let r = chronicle_bridge::run(&civ, seed).map_err(err)?;
+    let r = chronicle_bridge::run_from(&civ, seed, start_year).map_err(err)?;
     let guard = relock(&state.campaign);
     let db = guard.as_ref().ok_or("no_campaign")?;
-    db.backup(BackupKind::Transition, "modern era bridge").map_err(err)?;
-    let step = chronicle_bridge::BridgeConfig::builtin().step_years;
-    for e in &r.run.events {
-        db.add_event(&chronicle_db::NewEvent {
-            date_to: Some(PartialDate::year(e.year + step - 1)),
-            game_version: Some(chronicle_core::CHRONICLE_VERSION),
-            payload: serde_json::json!({ "simulated": true, "seed": seed }),
-            importance: bridge_importance(&e.kind),
-            ..chronicle_db::NewEvent::simple(PartialDate::year(e.year), "modern_bridge", &e.kind, chronicle_core::EventOrigin::Converter)
-        })
-        .map_err(err)?;
+    write_bridge_history(db, &r)
+}
+
+#[derive(Serialize)]
+struct StellarisTransition {
+    result: chronicle_bridge::ModResult,
+    events_added: Option<usize>,
+    campaign: Option<CampaignSummary>,
+}
+
+/// Stellaris version from the newest save's `meta` (e.g. "3.14.15"), if there is one.
+fn stellaris_version(save_dir: &std::path::Path, exts: &[String]) -> Option<String> {
+    let newest = chronicle_steam::list_save_files(save_dir, exts, 1).into_iter().next()?;
+    let bytes = std::fs::read(&newest.path).ok()?;
+    let meta = paradox_parser::container::archive::read_entry(&bytes, "meta").ok()?;
+    sniff_version(&meta)
+}
+
+/// HoI4 → Stellaris: write the Earth empire as a local Stellaris mod and, if a campaign is
+/// open, record the transition (bridge history + Stellaris as the current game in 2200).
+#[tauri::command]
+fn stellaris_create_mod(
+    state: State<'_, AppState>,
+    civ: chronicle_bridge::CivilizationState,
+    seed: u64,
+    start_year: Option<i32>,
+    empire_name: String,
+    adjective: String,
+) -> CmdResult<StellarisTransition> {
+    let r = chronicle_bridge::run_from(&civ, seed, start_year).map_err(err)?;
+    if !r.problems.is_empty() {
+        return Err(format!("invalid design: {}", r.problems.join("; ")));
     }
-    db.add_event(&chronicle_db::NewEvent {
-        payload: serde_json::json!({ "simulated": true, "seed": seed, "design": &r.design }),
-        importance: 5,
-        ..chronicle_db::NewEvent::simple(PartialDate::ymd(2200, 1, 1), "stellaris", "stellaris_empire_designed", chronicle_core::EventOrigin::Converter)
-    })
-    .map_err(err)?;
-    Ok(r.run.events.len() + 1)
+    let row = relock(&state.db).installations().map_err(err)?.into_iter().find(|x| x.game_key == "stellaris");
+    let save_dir = row.as_ref().and_then(|x| x.save_path.clone()).ok_or("stellaris_save_folder_unknown")?;
+    let install = row.as_ref().and_then(|x| x.install_path.clone()).map(PathBuf::from);
+    let exts = state.registry.game("stellaris").map(|g| g.save_extensions.clone()).unwrap_or_default();
+    let mod_root = chronicle_bridge::mod_root_from_save_dir(std::path::Path::new(&save_dir));
+    std::fs::create_dir_all(&mod_root).map_err(err)?;
+    let opts = chronicle_bridge::ModOptions {
+        empire_name: if empire_name.trim().is_empty() { chronicle_bridge::suggested_name(&r.design).0 } else { empire_name.trim().to_string() },
+        adjective: if adjective.trim().is_empty() { "Terran".into() } else { adjective.trim().to_string() },
+        game_version: stellaris_version(std::path::Path::new(&save_dir), &exts),
+    };
+    let result = chronicle_bridge::write_mod(&mod_root, &r.design, chronicle_bridge::Vocabulary::builtin(), install.as_deref(), &opts)
+        .map_err(err)?;
+
+    let guard = relock(&state.campaign);
+    let (events_added, campaign) = match guard.as_ref() {
+        Some(db) => {
+            let n = write_bridge_history(db, &r)?;
+            db.set_current("stellaris", PartialDate::ymd(2200, 1, 1)).map_err(err)?;
+            (Some(n), Some(db.summary().map_err(err)?))
+        }
+        None => (None, None),
+    };
+    Ok(StellarisTransition { result, events_added, campaign })
 }
 
 fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
@@ -424,11 +500,11 @@ fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
         if e.starts_with("fanatic_") { format!("Fanatic {name}") } else { name }
     };
     let (t_title, t_auth, t_eth, t_civ, t_org, t_hist, t_conf, t_how, t_note) = if uk {
-        ("Імперія Землі для Stellaris", "Влада", "Етика", "Цивіки", "Походження", "Історія 1948–2200 (симуляція)",
+        ("Імперія Землі для Stellaris", "Влада", "Етика", "Цивіки", "Походження", "Історія (симуляція)",
          "Впевненість", "Створіть цю імперію в конструкторі імперій Stellaris.",
          "Ключі Stellaris ще не звірені з файлами гри; остаточну перевірку робить конструктор у грі.")
     } else {
-        ("Earth empire for Stellaris", "Authority", "Ethics", "Civics", "Origin", "History 1948–2200 (simulated)",
+        ("Earth empire for Stellaris", "Authority", "Ethics", "Civics", "Origin", "History (simulated)",
          "Confidence", "Create this empire in the Stellaris empire designer.",
          "Stellaris keys are not yet verified against the game files; the in-game designer is the final check.")
     };
@@ -444,7 +520,7 @@ fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
     for dec in &d.decisions {
         out += &format!("- {}: {:.0}% ({})\n", dec.part, dec.confidence * 100.0, dec.review_state);
     }
-    out += &format!("\n## {t_hist}\n\n");
+    out += &format!("\n## {t_hist}: {}–2200\n\n", r.start_year);
     for e in &r.run.events {
         out += &format!("- {}s: {}\n", e.year, e.kind.replace('_', " "));
     }
@@ -454,8 +530,14 @@ fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
 
 /// Save the design as JSON (machine-readable) and Markdown (a card to follow in the game).
 #[tauri::command]
-fn bridge_export(civ: chronicle_bridge::CivilizationState, seed: u64, folder: String, language: String) -> CmdResult<String> {
-    let r = chronicle_bridge::run(&civ, seed).map_err(err)?;
+fn bridge_export(
+    civ: chronicle_bridge::CivilizationState,
+    seed: u64,
+    start_year: Option<i32>,
+    folder: String,
+    language: String,
+) -> CmdResult<String> {
+    let r = chronicle_bridge::run_from(&civ, seed, start_year).map_err(err)?;
     let dir = PathBuf::from(folder);
     if !dir.is_dir() {
         return Err("folder_not_found".into());
@@ -480,11 +562,14 @@ async fn stellaris_read_empire(
     path: String,
     civ: Option<chronicle_bridge::CivilizationState>,
     seed: Option<u64>,
+    start_year: Option<i32>,
 ) -> CmdResult<StellarisCompare> {
     tauri::async_runtime::spawn_blocking(move || {
         let empire = chronicle_bridge::read_empire(&PathBuf::from(path)).map_err(err)?;
         let comparison = match (civ, seed) {
-            (Some(c), Some(s)) => Some(chronicle_bridge::compare(&chronicle_bridge::run(&c, s).map_err(err)?.design, &empire)),
+            (Some(c), Some(s)) => {
+                Some(chronicle_bridge::compare(&chronicle_bridge::run_from(&c, s, start_year).map_err(err)?.design, &empire))
+            }
             _ => None,
         };
         Ok(StellarisCompare { empire, comparison })
@@ -694,6 +779,7 @@ fn main() {
             bridge_export,
             bridge_vocabulary,
             stellaris_read_empire,
+            stellaris_create_mod,
             hoi4_read_world,
             import_ck3_save
         ])

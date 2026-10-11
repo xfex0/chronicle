@@ -165,7 +165,9 @@ Crate `chronicle-bridge`, screen **Bridge → Stellaris**, CLI `chronicle-dev br
    Sources: a **HoI4 text save** (`read_hoi4` + `to_civilization`, 12 of 14 indicators from
    the save, weighted by each country's industry — `games/hoi4/semantic_mapping.yaml`),
    presets, or manual sliders. Missing indicators stay neutral and lower data coverage.
-2. **Simulation 1948 → 2200** in decades, deterministic per seed: technology/industry growth,
+2. **Simulation <start> → 2200** in decades, deterministic per seed. The start year is the
+   player's choice: 1936 (first HoI4 bookmark) up to 2190; default 1948, or the HoI4 save's
+   own year when a save is loaded (`run_from`). The simulation covers technology/industry growth,
    space race or cooperative space program, slow social drift, nuclear war (needs nukes,
    rivalry and low cooperation), climate crisis or ecological collapse, conquest or peaceful
    merging of blocs, space milestones, Earth unification.
@@ -177,8 +179,15 @@ Crate `chronicle-bridge`, screen **Bridge → Stellaris**, CLI `chronicle-dev br
    bridge is speculative, so civics sit at 60 % and are flagged for review).
 4. **Output**: the timeline can be written into the campaign journal (origin `converter`,
    payload `simulated: true`, range dates per decade; a transition backup is made first), and
-   an empire card (Markdown + JSON) is exported to recreate the empire in the Stellaris
-   designer. Automatic Stellaris mod generation waits for the Stellaris research phase.
+   an empire card (Markdown + JSON) is exported, and **a Stellaris mod is generated**
+   (`stellaris_mod.rs`): Chronicle copies the game's own human empire block from the player's
+   install (`prescripted_countries/*.txt`, species class "HUM"), replaces only name,
+   adjective, authority, ethics, civics, origin and `spawn_enabled`, checks the result
+   parses and round-trips, and writes `mod/chronicle_earth/` + `mod/chronicle_earth.mod`
+   (localisation with UTF-8 BOM for 10 languages, `supported_version` from the newest save).
+   With a campaign open, the bridge history goes into the journal and the campaign's current
+   game becomes Stellaris on 2200.1.1. Without an install a built-in template is used and
+   flagged. Final check: the empire appears in Stellaris' empire selection.
 
 Balance: `config/bridge.yaml`. Rules and names: `games/stellaris/vocabulary.yaml`
 (`verified: false` until checked against the game files). The research twin

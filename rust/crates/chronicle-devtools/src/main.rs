@@ -27,10 +27,10 @@ const HELP: &str = "chronicle-dev <command>
   steam                               detect Steam, libraries and supported games
   backups <folder>                    backup register (kind, path, time)
   registry                            validated game registry and transition dates
-  bridge [preset] [seed]              Modern Era Bridge 1948→2200 and the Stellaris empire design
+  bridge [preset] [seed] [year]       Modern Era Bridge <year>→2200 (default 1948, from 1936) and the Stellaris empire design
                                       presets: global_democracy, military_dictatorship, cold_war, planned_technocracy
   stellaris <save.sav>                read the player's empire from a Stellaris save
-  hoi4 <save.hoi4> [seed]             HoI4 text save → civilization indicators → Bridge → Stellaris empire
+  hoi4 <save.hoi4> [seed] [year]      HoI4 text save → indicators → Bridge from the save's year (or <year>) → Stellaris empire
   ck3 <save.ck3>                      read a CK3 save: realms, player, largest states
   import <folder> <save.ck3>          import a CK3 save into a campaign (creates the campaign if the folder is new)";
 
@@ -171,8 +171,9 @@ fn run(args: &[String]) -> R {
                 .find(|(n, _)| *n == name)
                 .map(|(_, s)| s)
                 .ok_or_else(|| format!("unknown preset {name}"))?;
-            let r = chronicle_bridge::run(&start, seed)?;
-            println!("Modern Era Bridge — preset {name}, seed {seed}");
+            let year: Option<i32> = args.get(3).map(|s| s.parse()).transpose()?;
+            let r = chronicle_bridge::run_from(&start, seed, year)?;
+            println!("Modern Era Bridge — preset {name}, seed {seed}, from {}", r.start_year);
             for e in &r.run.events {
                 println!("  {}  {}", e.year, e.kind);
             }
@@ -219,9 +220,18 @@ fn run(args: &[String]) -> R {
             }
             println!("  blocs: {}, ideology: {:?}", civ.state.blocs, civ.state.ideology);
             let seed: u64 = args.get(2).map(|s| s.parse()).transpose()?.unwrap_or(45_819_283);
-            let r = chronicle_bridge::run(&civ.state, seed)?;
+            let save_year = s.date.as_deref().and_then(|d| d.split('.').next()).and_then(|y| y.parse::<i32>().ok());
+            let year: Option<i32> = args.get(3).map(|s| s.parse()).transpose()?.or(save_year);
+            let r = chronicle_bridge::run_from(&civ.state, seed, year)?;
             let d = &r.design;
-            println!("\nStellaris empire (seed {seed}): {}; {}; {}; {}", d.authority, d.ethics.join(", "), d.civics.join(", "), d.origin);
+            println!(
+                "\nStellaris empire (seed {seed}, bridge from {}): {}; {}; {}; {}",
+                r.start_year,
+                d.authority,
+                d.ethics.join(", "),
+                d.civics.join(", "),
+                d.origin
+            );
         }
         "ck3" => {
             let w = chronicle_ck3::read_ck3(&PathBuf::from(a(1)?))?;
