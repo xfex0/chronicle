@@ -304,6 +304,8 @@ pub struct CampaignSummary {
     pub settings: CampaignSettings,
     pub event_count: u64,
     pub entity_count: u64,
+    /// Era status per game (active / completed / skipped), once transitions happened.
+    pub eras: std::collections::BTreeMap<String, String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -477,6 +479,10 @@ impl CampaignDb {
         )?;
         let event_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM events", [], |r| r.get(0))?;
         let entity_count: i64 = self.conn.query_row("SELECT COUNT(*) FROM entities", [], |r| r.get(0))?;
+        let mut st = self.conn.prepare("SELECT game, status FROM eras")?;
+        let eras = st
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))?
+            .collect::<std::result::Result<std::collections::BTreeMap<_, _>, _>>()?;
         Ok(CampaignSummary {
             id: self.id.clone(),
             is_demo,
@@ -488,6 +494,7 @@ impl CampaignDb {
             settings: serde_json::from_str(&settings_json)?,
             event_count: event_count as u64,
             entity_count: entity_count as u64,
+            eras,
         })
     }
 

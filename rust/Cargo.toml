@@ -18,6 +18,7 @@ chronicle-devtools = { path = "crates/chronicle-devtools" }
 chronicle-bridge = { path = "crates/chronicle-bridge" }
 chronicle-ck3 = { path = "crates/chronicle-ck3" }
 chronicle-transition = { path = "crates/chronicle-transition" }
+chronicle-converters = { path = "crates/chronicle-converters" }
 geocore = { path = "crates/geocore" }
 
 serde = { version = "1", features = ["derive"] }
@@ -34,6 +35,7 @@ uuid = { version = "1", features = ["v4"] }
 tempfile = "3"
 sha2 = "0.10"
 png = "0.17"
+ureq = { version = "2", features = ["json"] }
 
 [profile.release]
 lto = "thin"

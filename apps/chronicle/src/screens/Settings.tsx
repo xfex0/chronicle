@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { Language, SaveFormatRow } from "../api/types";
+import type { ConverterRow, Language, SaveFormatRow } from "../api/types";
 import { Icon } from "../components/Icons";
 import { errorText, useI18n, type Key } from "../i18n";
 
@@ -10,11 +10,26 @@ export function Settings({ app, lang, onLanguage }: { app: AppData; lang: Langua
   const [log, setLog] = useState<string[]>([]);
   const [formats, setFormats] = useState<SaveFormatRow[]>([]);
   const [busy, setBusy] = useState<string | null>(null);
+  const [converters, setConverters] = useState<ConverterRow[]>([]);
 
   useEffect(() => {
     backend.steamLog().then(setLog).catch(() => setLog([]));
     backend.saveFormatStatus().then(setFormats).catch(() => setFormats([]));
+    backend.converterCatalog().then(setConverters).catch(() => setConverters([]));
   }, []);
+
+  async function installConverter(route: string) {
+    setBusy(route);
+    try {
+      const r = await backend.installConverter(route);
+      app.notify(t("ext.installed", { version: r.version }));
+      setConverters(await backend.converterCatalog());
+    } catch (e) {
+      app.notify(errorText(t, errorCode(e)), "error");
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function switchFormat(game: string, text: boolean) {
     setBusy(game);
@@ -72,6 +87,25 @@ export function Settings({ app, lang, onLanguage }: { app: AppData; lang: Langua
         );
       })}
       <p className="hint">{t("sf.existing")}</p>
+
+      <h2>{t("conv.title")}</h2>
+      <p className="muted">{t("conv.hint")}</p>
+      {converters.map((c) => (
+        <div key={c.route} className="card save-format">
+          <div className="card-head">
+            <h2>{c.name}</h2>
+            <span className={c.program ? "badge is-ok" : "badge is-off"}>
+              {c.version ? t("conv.version", { version: c.version }) : c.program ? t("conv.manual") : t("conv.notInstalled")}
+            </span>
+          </div>
+          <p className="hint">github.com/{c.repo}{c.program ? ` · ${c.program}` : ""}</p>
+          <div className="actions compact">
+            <button className={c.program ? "" : "primary"} disabled={busy === c.route} onClick={() => installConverter(c.route)}>
+              {busy === c.route ? t("ext.installing") : c.version ? t("ext.update", { version: c.version }) : t("ext.install")}
+            </button>
+          </div>
+        </div>
+      ))}
 
       <h2>{t("set.data")}</h2>
       <p className="muted">{t("set.dataBody")}</p>

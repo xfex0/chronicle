@@ -287,7 +287,32 @@ reached); **automatic** (when the newest save has been stable for a minute after
 Chronicle runs steps 1–11 and asks you to review — generation always waits for you).
 The old era is never deleted: its save copy, history and data stay; it is marked completed.
 
-### Victoria 3 → HoI4 through an external converter ✅ (route `Vic3ToHoi4External`)
+### Transition to any later game ✅
+
+`targets(current)` lists every later game of the chain (the Modern Era Bridge is simulated,
+never a target). The player picks one on the Era transition screen:
+
+| Route | How |
+|---|---|
+| HoI4 → Stellaris | Chronicle's Modern Era Bridge (own) |
+| CK3 → EU5 | Chronicle imports; EU5 world blocked until GeoCore + EU5 adapter |
+| any other pair (incl. jumps such as CK3 → HoI4) | `External`: an external converter for that pair (path per route in app settings `converter.<from>-><to>`) |
+
+External routes import the final world when Chronicle can read the save (CK3, HoI4 text),
+otherwise keep the save and add a `world_snapshot` event. Games jumped over are marked
+`skipped` in `eras` (migration 0006) with an `era_skipped` journal event, shown struck through
+in the chain on the Dashboard and as their own tab in the timeline.
+
+### Installing converters ✅ (crate `chronicle-converters`)
+
+`config/converters.yaml` lists the converters Chronicle may install (today: Paradox Game
+Converters' Vic3ToHoI4). "Install" / "Update" (Settings → Converters, or the Era transition
+screen) asks GitHub for the latest release, picks the Windows zip, downloads it, unpacks it
+safely into `<app data>/converters/<repo>/<tag>/` (entries escaping the folder are skipped),
+finds the program (the converter's frontend first) and selects it for that route. This is the
+only network access in Chronicle, and it happens only on that button.
+
+### Victoria 3 → HoI4 through an external converter ✅ (route `External`)
 
 Building a HoI4 world from Victoria 3 needs a map transfer (≈700 Vic3 states → ≈1000 HoI4
 states), ideologies, leaders, industry, technology and a HoI4 mod — GeoCore-scale work.

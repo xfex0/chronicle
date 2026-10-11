@@ -73,6 +73,7 @@ export interface CampaignSummary {
   settings: CampaignSettings;
   event_count: number;
   entity_count: number;
+  eras?: Record<string, string>;
 }
 
 export interface CampaignIndexRow {
@@ -255,7 +256,9 @@ export type StepId = "find_save" | "check_save" | "backup" | "import_final" | "f
   | "geo_core" | "coefficients" | "build_world" | "preview" | "generate" | "validate" | "close_era" | "next_era";
 export type StepStatus = "pending" | "done" | "skipped" | "blocked" | "warning" | "failed";
 export interface TransitionStep { id: StepId; status: StepStatus; counts: Record<string, number>; note: string | null }
-export interface TransitionRoute { from: string; to: string; via: string | null; kind: "hoi4_to_stellaris" | "ck3_to_eu5" | "vic3_to_hoi4_external" | "unsupported" }
+export interface TransitionRoute {
+  from: string; to: string; via: string | null; kind: "hoi4_to_stellaris" | "ck3_to_eu5" | "external" | "unsupported"; skipped: string[];
+}
 export interface BridgeParams { seed: number; start_year: number | null; empire_name: string; adjective: string }
 export interface TransitionPreview {
   source_countries: number; target_countries: number | null; merged: number; split: number; vanished: number; created: number;
@@ -278,3 +281,6 @@ export type SaveMode = "binary" | "text" | "not_set";
 export interface SaveModeStatus { settings_file: string; exists: boolean; mode: SaveMode }
 export interface SaveFormatRow { game: string; status: SaveModeStatus | null; verified: boolean }
 export interface SaveModeChange { settings_file: string; backup: string | null; mode: SaveMode; changed: boolean }
+
+export interface ConverterRow { route: string; name: string; repo: string; program: string | null; version: string | null }
+export interface InstalledConverter { route: string; program: string; version: string; release_url: string }

@@ -165,7 +165,7 @@ export function mockTransition(finished: boolean): TransitionPlan {
     note: id === "check_save" ? "transition_date_not_reached" : id === "geo_core" ? "one_planet" : null,
   }));
   return {
-    route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris" },
+    route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris", skipped: [] },
     save: "C:/saves/autosave.hoi4", save_date: "1940.1.3", transition_date: "1948.1.1", steps,
     preview: {
       source_countries: 87, target_countries: 1, merged: 87, split: 0, vanished: 0, created: 1, low_confidence: 3,

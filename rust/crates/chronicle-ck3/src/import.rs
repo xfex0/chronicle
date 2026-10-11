@@ -235,9 +235,12 @@ fn import_body(
         let culture = ruler.and_then(|r| r.culture.as_ref()).and_then(|c| culture_ids.get(c));
         let faith = ruler.and_then(|r| r.faith.as_ref()).and_then(|f| faith_ids.get(f));
         let created = title.history.iter().rev().find(|h| h.kind == HistoryKind::Created).map(|h| h.date);
-        // the player's realm: the game's own name for it (e.g. "Spain") from the save metadata
+        // A name stored in the save wins (1.0.2: "Гуджарат"). When the save has none (1.19 keeps
+        // only the key, so the reader made "Spain" from "e_spain"), the player's realm takes the
+        // game's own display name from the save metadata.
+        let from_key = title.name == crate::read::display_from_key(&title.key);
         let name = match (&world.player, &world.player_title_name) {
-            (Some(p), Some(n)) if *p == realm.ruler && !n.is_empty() => n.clone(),
+            (Some(p), Some(n)) if *p == realm.ruler && from_key && !n.is_empty() => n.clone(),
             _ if title.name.is_empty() => title.key.clone(),
             _ => title.name.clone(),
         };

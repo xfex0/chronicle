@@ -1,0 +1,17 @@
+[package]
+name = "chronicle-converters"
+description = "Install external converters (Paradox Game Converters) from their official GitHub releases"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_yaml.workspace = true
+thiserror.workspace = true
+zip.workspace = true
+ureq.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

@@ -238,7 +238,11 @@ impl CampaignDb {
 
     /// Mark an era (one game of the chain) planned / active / completed.
     pub fn set_era(&self, game: &str, status: &str, date: PartialDate, final_snapshot: Option<i64>, conversion: Option<i64>) -> Result<()> {
-        let (start, end) = if status == "completed" { (None, Some(date)) } else { (Some(date), None) };
+        let (start, end) = match status {
+            "completed" => (None, Some(date)),
+            "skipped" => (None, None),
+            _ => (Some(date), None),
+        };
         self.conn().execute(
             "INSERT INTO eras(game, status, started_year, started_month, started_day, completed_year, completed_month,
                               completed_day, final_snapshot, conversion_id)

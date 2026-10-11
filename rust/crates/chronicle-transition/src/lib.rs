@@ -94,9 +94,10 @@ pub struct Step {
 pub enum RouteKind {
     Hoi4ToStellaris,
     Ck3ToEu5,
-    /// Victoria 3 → HoI4: the HoI4 world is built by an external converter (Paradox Game
-    /// Converters); Chronicle orchestrates, keeps the save and records the era change.
-    Vic3ToHoi4External,
+    /// Any game → any later game through an external converter (e.g. Paradox Game Converters'
+    /// Victoria 3 → HoI4): Chronicle imports what it can read, keeps the save, launches the
+    /// converter, checks its mod and records the era change (games in between: skipped).
+    External,
     Unsupported,
 }
 
@@ -107,6 +108,9 @@ pub struct Route {
     /// Intermediate stage that is simulated, not played (the Modern Era Bridge).
     pub via: Option<String>,
     pub kind: RouteKind,
+    /// Games of the chain jumped over by this transition (marked skipped afterwards).
+    #[serde(default)]
+    pub skipped: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -207,23 +211,37 @@ pub enum TransitionError {
 
 // ------------------------------------------------------------------------------- routing
 
-pub fn route_from(registry: &GameRegistry, current: &str) -> Option<Route> {
+/// Route from `from` to a later game `to` (None if `to` is not after `from` in the chain).
+pub fn route_to(registry: &GameRegistry, from: &str, to: &str) -> Option<Route> {
     let chain = &registry.chain;
-    let i = chain.iter().position(|g| g == current)?;
-    let next = chain.get(i + 1)?.clone();
-    let (to, via) = if next == "modern_bridge" { (chain.get(i + 2)?.clone(), Some(next)) } else { (next, None) };
-    let kind = match (current, to.as_str()) {
-        ("hoi4", "stellaris") => RouteKind::Hoi4ToStellaris,
-        ("ck3", "eu5") => RouteKind::Ck3ToEu5,
-        ("victoria3", "hoi4") => RouteKind::Vic3ToHoi4External,
-        _ => RouteKind::Unsupported,
+    let i = chain.iter().position(|g| g == from)?;
+    let j = chain.iter().position(|g| g == to)?;
+    if j <= i || registry.game(to).is_some_and(|g| g.kind == chronicle_core::registry::GameKind::Virtual) {
+        return None;
+    }
+    let between: Vec<String> = chain[i + 1..j].to_vec();
+    let (kind, via, skipped) = match (from, to) {
+        ("hoi4", "stellaris") => (RouteKind::Hoi4ToStellaris, Some("modern_bridge".to_string()), Vec::new()),
+        ("ck3", "eu5") => (RouteKind::Ck3ToEu5, None, Vec::new()),
+        _ => (RouteKind::External, None, between),
     };
-    Some(Route { from: current.to_string(), to, via, kind })
+    Some(Route { from: from.to_string(), to: to.to_string(), via, kind, skipped })
+}
+
+/// Every later game a campaign in `current` can move to, nearest first.
+pub fn targets(registry: &GameRegistry, current: &str) -> Vec<Route> {
+    let Some(i) = registry.chain.iter().position(|g| g == current) else { return Vec::new() };
+    registry.chain[i + 1..].iter().filter_map(|to| route_to(registry, current, to)).collect()
+}
+
+/// The default route: to the next playable game.
+pub fn route_from(registry: &GameRegistry, current: &str) -> Option<Route> {
+    targets(registry, current).into_iter().next()
 }
 
 /// The transition date for the first leg (settings first, then the registry default).
 pub fn transition_date(db: &CampaignDb, registry: &GameRegistry, route: &Route) -> Result<Option<PartialDate>, DbError> {
-    let next = route.via.clone().unwrap_or_else(|| route.to.clone());
+    let next = route.via.clone().or_else(|| route.skipped.first().cloned()).unwrap_or_else(|| route.to.clone());
     let settings = db.summary()?.settings;
     Ok(settings
         .transition_dates
@@ -288,7 +306,7 @@ pub fn readiness(db: &CampaignDb, ctx: &Context<'_>) -> Result<Readiness, DbErro
     let support = match route.kind {
         RouteKind::Hoi4ToStellaris => "full",
         RouteKind::Ck3ToEu5 => "partial",
-        RouteKind::Vic3ToHoi4External => "external",
+        RouteKind::External => "external",
         RouteKind::Unsupported => "none",
     };
     Ok(Readiness { route: Some(route), newest_save: newest, save_date, transition_date: tdate, reached, support: support.into() })
@@ -359,10 +377,15 @@ pub fn prepare(
     db: &mut CampaignDb,
     ctx: &Context<'_>,
     save_override: Option<PathBuf>,
+    target: Option<&str>,
     on_step: &mut dyn FnMut(&Step),
 ) -> Result<TransitionPlan, TransitionError> {
     let summary = db.summary()?;
-    let route = route_from(ctx.registry, &summary.current_game).ok_or_else(|| TransitionError::NoNextGame(summary.current_game.clone()))?;
+    let route = match target {
+        Some(to) => route_to(ctx.registry, &summary.current_game, to),
+        None => route_from(ctx.registry, &summary.current_game),
+    }
+    .ok_or_else(|| TransitionError::NoNextGame(summary.current_game.clone()))?;
     let mut plan = new_plan(route.clone(), ctx.bridge.clone());
     plan.transition_date = transition_date(db, ctx.registry, &route)?;
     let mut run = Run { plan: &mut plan, on_step };
@@ -385,7 +408,7 @@ pub fn prepare(
     };
     run.plan.save = Some(save.display().to_string());
     run.set(StepId::FindSave, StepStatus::Done, &[], save.file_name().map(|n| n.to_string_lossy().into_owned()));
-    if route.kind == RouteKind::Vic3ToHoi4External {
+    if route.kind == RouteKind::External {
         prepare_external(db, ctx, &route, &save, &summary, &mut run)?;
         return Ok(plan);
     }
@@ -614,7 +637,7 @@ pub fn prepare(
             run.block_rest(StepId::Generate, "eu5_adapter_research");
         }
         // Vic3 → HoI4 is fully handled by `prepare_external` before this point.
-        RouteKind::Unsupported | RouteKind::Vic3ToHoi4External => {
+        RouteKind::Unsupported | RouteKind::External => {
             run.block_rest(StepId::GeoCore, "target_adapter_missing");
         }
     }
@@ -637,8 +660,9 @@ fn keep_save(db: &CampaignDb, save: &Path) -> Result<(PathBuf, String), Transiti
     Ok((dest, sha))
 }
 
-/// Victoria 3 → HoI4 with an external converter: Chronicle keeps the final save, records the
-/// era in the journal and waits for the converter's HoI4 mod (steps 12–15 in `generate`).
+/// Any route through an external converter. Chronicle imports the final world when it can read
+/// the save (CK3, HoI4 text saves), otherwise keeps the save and records the era in the journal
+/// (Victoria 3 and other binary saves), then waits for the converter's mod (`generate`).
 fn prepare_external(
     db: &mut CampaignDb,
     ctx: &Context<'_>,
@@ -647,49 +671,143 @@ fn prepare_external(
     summary: &chronicle_db::CampaignSummary,
     run: &mut Run<'_, '_>,
 ) -> Result<(), TransitionError> {
-    let info = vic3::inspect(save)?;
-    let date = info.date_from_name.or(run.plan.transition_date).or(summary.current_date).unwrap_or(PartialDate::ymd(1936, 1, 1));
-    if summary.current_date.is_some_and(|c| date < c) && info.date_from_name.is_some() {
+    // 2. what can be read from the save
+    enum Source {
+        Ck3(Box<chronicle_ck3::Ck3World>),
+        Hoi4(Box<chronicle_bridge::Hoi4World>),
+        Opaque { version: Option<String>, label: Option<String>, binary: bool, date: Option<PartialDate> },
+    }
+    let opaque_from_name = || Source::Opaque { version: None, label: None, binary: true, date: vic3::date_from_file_name(save) };
+    let source = match route.from.as_str() {
+        "ck3" => match chronicle_ck3::read_ck3(save) {
+            Ok(w) => Source::Ck3(Box::new(w)),
+            Err(_) => opaque_from_name(),
+        },
+        "hoi4" => match chronicle_bridge::read_hoi4(save) {
+            Ok(w) => Source::Hoi4(Box::new(w)),
+            Err(_) => opaque_from_name(),
+        },
+        _ => {
+            let info = vic3::inspect(save)?;
+            Source::Opaque { version: info.version, label: info.label, binary: info.binary, date: info.date_from_name }
+        }
+    };
+    let read_date = match &source {
+        Source::Ck3(w) => w.date,
+        Source::Hoi4(w) => w.date.as_deref().and_then(chronicle_bridge::hoi4_import::hoi4_date),
+        Source::Opaque { date, .. } => *date,
+    };
+    let date = read_date.or(run.plan.transition_date).or(summary.current_date).unwrap_or(PartialDate::ymd(1936, 1, 1));
+    if summary.current_date.is_some_and(|c| date < c) && read_date.is_some() {
         run.set(StepId::CheckSave, StepStatus::Failed, &[], Some("older_than_campaign".into()));
         run.block_rest(StepId::Backup, "older_than_campaign");
         return Ok(());
     }
     run.plan.save_date = Some(date);
-    let note = if info.binary { "vic3_binary_converter_reads" } else { "vic3_text_reader_planned" };
-    run.set(StepId::CheckSave, StepStatus::Warning, &[], Some(note.into()));
+    let check_note = match &source {
+        Source::Opaque { binary: true, .. } => Some("binary_converter_reads"),
+        Source::Opaque { .. } => Some("text_reader_planned"),
+        _ => None,
+    };
+    run.set(
+        StepId::CheckSave,
+        if check_note.is_some() { StepStatus::Warning } else { StepStatus::Done },
+        &[("year", i64::from(date.year))],
+        check_note.map(str::to_string),
+    );
 
+    // 3. backup
     let backup = db.backup(BackupKind::Transition, &format!("before {} to {}", route.from, route.to))?;
     run.set(StepId::Backup, StepStatus::Done, &[], Some(backup.display().to_string()));
-    run.set(StepId::ImportFinal, StepStatus::Skipped, &[], Some("vic3_import_not_available".into()));
 
+    // 4. import what can be read
+    let mut imported = false;
+    match &source {
+        Source::Ck3(w) => match chronicle_ck3::import_world(db, w, save) {
+            Ok(r) => {
+                imported = true;
+                run.set(
+                    StepId::ImportFinal,
+                    StepStatus::Done,
+                    &[("countries", r.realms as i64), ("territories", r.counties as i64), ("rulers", r.rulers as i64)],
+                    None,
+                );
+                run.set(
+                    StepId::DiffHistory,
+                    StepStatus::Done,
+                    &[("territories_changed", r.territories_changed as i64), ("events_added", r.events_added as i64)],
+                    None,
+                );
+                run.set(StepId::Semantics, StepStatus::Done, &[("values", r.semantic_values as i64)], None);
+                run.plan.preview.get_or_insert_with(Preview::default).source_countries = r.realms;
+            }
+            Err(e) => run.set(StepId::ImportFinal, StepStatus::Warning, &[], Some(e.to_string())),
+        },
+        Source::Hoi4(w) => match chronicle_bridge::import_hoi4(db, w, save) {
+            Ok(r) => {
+                imported = true;
+                run.set(
+                    StepId::ImportFinal,
+                    StepStatus::Done,
+                    &[("countries", r.countries as i64), ("territories", r.states as i64), ("wars", r.wars as i64)],
+                    None,
+                );
+                run.set(
+                    StepId::DiffHistory,
+                    StepStatus::Done,
+                    &[("territories_changed", r.territories_changed as i64), ("events_added", r.events_added as i64)],
+                    None,
+                );
+                run.set(StepId::Semantics, StepStatus::Done, &[("values", r.semantic_values as i64)], None);
+                run.plan.preview.get_or_insert_with(Preview::default).source_countries = r.countries;
+            }
+            Err(e) => run.set(StepId::ImportFinal, StepStatus::Warning, &[], Some(e.to_string())),
+        },
+        Source::Opaque { .. } => run.set(StepId::ImportFinal, StepStatus::Skipped, &[], Some("import_not_available".into())),
+    }
+
+    // 5. final snapshot (+ read-only copy of the save)
     let (stored, sha) = keep_save(db, save)?;
-    let save_id = db.record_save_file(&route.from, &save.display().to_string(), &stored.display().to_string(), &sha, Some(date), info.version.as_deref())?;
-    let snapshot = db.record_snapshot(&route.from, date, "final", &stored.display().to_string(), &sha, Some(save_id))?;
+    let version = match &source {
+        Source::Ck3(w) => w.version.clone(),
+        Source::Hoi4(w) => w.version.clone(),
+        Source::Opaque { version, .. } => version.clone(),
+    };
+    let stored_s = stored.display().to_string();
+    let save_id = db.record_save_file(&route.from, &save.display().to_string(), &stored_s, &sha, Some(date), version.as_deref())?;
+    let snapshot = db.record_snapshot(&route.from, date, "final", &stored_s, &sha, Some(save_id))?;
     run.plan.snapshot_id = Some(snapshot);
     run.set(StepId::FinalSnapshot, StepStatus::Done, &[("snapshot", snapshot)], None);
 
-    // The era is in the journal even though its history cannot be read.
-    let key = format!("vic3:final:{sha}");
-    let mut added = 0;
-    if !db.event_exists("world_snapshot", date, &key)? {
-        db.add_event(&NewEvent {
-            game_version: info.version.as_deref(),
-            payload: serde_json::json!({
-                "key": key, "save_label": info.label, "game_version": info.version, "binary": info.binary,
-                "date_source": if info.date_from_name.is_some() { "file name" } else { "transition date" },
-            }),
-            importance: 4,
-            ..NewEvent::simple(date, &route.from, "world_snapshot", EventOrigin::Save)
-        })?;
-        added += 1;
+    // 6–7 for saves Chronicle cannot read: the era still gets its place in the journal
+    if !imported {
+        let key = format!("{}:final:{sha}", route.from);
+        let mut added = 0;
+        if !db.event_exists("world_snapshot", date, &key)? {
+            let (label, binary) = match &source {
+                Source::Opaque { label, binary, .. } => (label.clone(), *binary),
+                _ => (None, true),
+            };
+            db.add_event(&NewEvent {
+                game_version: version.as_deref(),
+                payload: serde_json::json!({
+                    "key": key, "save_label": label, "game_version": version, "binary": binary,
+                    "date_source": if read_date.is_some() { "save" } else { "transition date" },
+                }),
+                importance: 4,
+                ..NewEvent::simple(date, &route.from, "world_snapshot", EventOrigin::Save)
+            })?;
+            added += 1;
+        }
+        run.set(StepId::DiffHistory, StepStatus::Skipped, &[("events_added", added)], Some("needs_import".into()));
+        run.set(StepId::Semantics, StepStatus::Skipped, &[], Some("needs_import".into()));
     }
-    run.set(StepId::DiffHistory, StepStatus::Skipped, &[("events_added", added)], Some("needs_import".into()));
-    run.set(StepId::Semantics, StepStatus::Skipped, &[], Some("needs_import".into()));
     run.set(StepId::GeoCore, StepStatus::Skipped, &[], Some("done_by_external_converter".into()));
     run.set(StepId::Coefficients, StepStatus::Skipped, &[], Some("done_by_external_converter".into()));
 
+    // 10–11
     let converter = ctx.converters.get(&format!("{}->{}", route.from, route.to)).map(|p| p.display().to_string());
-    let hoi4_known = ctx.dirs.get(&route.to).and_then(|d| d.save_dir.as_ref()).is_some();
+    let target_known = ctx.dirs.get(&route.to).and_then(|d| d.save_dir.as_ref()).is_some();
     run.plan.converter = converter.clone();
     run.set(
         StepId::BuildWorld,
@@ -697,34 +815,39 @@ fn prepare_external(
         &[],
         Some(if converter.is_some() { "run_external_converter" } else { "converter_not_set" }.into()),
     );
-    let mut notes = vec!["external_converter_builds_world".to_string()];
-    if info.binary {
-        notes.push("vic3_history_not_imported_binary".into());
+    let preview = run.plan.preview.get_or_insert_with(Preview::default);
+    preview.notes.push("external_converter_builds_world".into());
+    if !imported {
+        preview.notes.push("history_not_imported_binary".into());
     }
-    let mut critical = 0;
-    if !hoi4_known {
-        notes.push("hoi4_save_folder_unknown".into());
-        critical += 1;
+    if !route.skipped.is_empty() {
+        preview.notes.push("eras_skipped".into());
     }
-    run.plan.preview = Some(Preview { critical_errors: critical, notes, ..Default::default() });
+    if !target_known {
+        preview.notes.push("target_save_folder_unknown".into());
+        preview.critical_errors += 1;
+    }
+    let critical = preview.critical_errors;
     run.set(
         StepId::Preview,
         if critical == 0 { StepStatus::Done } else { StepStatus::Warning },
-        &[("critical", critical as i64)],
+        &[("critical", critical as i64), ("skipped_eras", route.skipped.len() as i64)],
         None,
     );
-    let adapters = serde_json::json!({ "chronicle": chronicle_core::CHRONICLE_VERSION, "source": route.from, "target": route.to,
-                                        "external_converter": converter, "source_version": info.version });
+    let adapters = serde_json::json!({
+        "chronicle": chronicle_core::CHRONICLE_VERSION, "source": route.from, "target": route.to,
+        "external_converter": converter, "source_version": version, "skipped": route.skipped,
+    });
     let conv = db.record_conversion(&route.from, &route.to, snapshot, &sha, date, &adapters, "external", 0)?;
     run.plan.conversion_id = Some(conv);
     run.plan.can_generate = critical == 0;
     if critical > 0 {
-        run.plan.blocked_reason = Some("hoi4_save_folder_unknown".into());
+        run.plan.blocked_reason = Some("target_save_folder_unknown".into());
     }
     Ok(())
 }
 
-/// Newest `*.mod` descriptor in the HoI4 mod folder written after `since` (unix seconds).
+/// Newest `*.mod` descriptor in the target game's mod folder written after `since` (unix seconds).
 fn newest_mod_since(mod_dir: &Path, since: u64) -> Option<PathBuf> {
     std::fs::read_dir(mod_dir)
         .ok()?
@@ -747,7 +870,7 @@ fn generate_external(db: &mut CampaignDb, ctx: &Context<'_>, run: &mut Run<'_, '
         .get(&route.to)
         .and_then(|d| d.save_dir.as_ref())
         .map(|d| chronicle_steam::docs_dir(d))
-        .ok_or_else(|| TransitionError::NotReady("hoi4_save_folder_unknown".into()))?;
+        .ok_or_else(|| TransitionError::NotReady("target_save_folder_unknown".into()))?;
     let Some(descriptor) = newest_mod_since(&docs.join("mod"), run.plan.prepared_at) else {
         run.set(StepId::Generate, StepStatus::Failed, &[], Some("converter_output_not_found".into()));
         run.block_rest(StepId::Validate, "converter_output_not_found");
@@ -785,6 +908,18 @@ fn generate_external(db: &mut CampaignDb, ctx: &Context<'_>, run: &mut Run<'_, '
         db.set_conversion_status(c, "generated")?;
     }
     run.set(StepId::CloseEra, StepStatus::Done, &[], None);
+    // games jumped over: kept in the chain as skipped, with a journal entry each
+    for g in &route.skipped {
+        db.set_era(g, "skipped", date, None, run.plan.conversion_id)?;
+        let key = format!("era:{}:skipped:{}", g, run.plan.conversion_id.unwrap_or(0));
+        if !db.event_exists("era_skipped", date, &key)? {
+            db.add_event(&NewEvent {
+                payload: serde_json::json!({ "key": key, "from": route.from, "to": route.to }),
+                importance: 3,
+                ..NewEvent::simple(date, g, "era_skipped", EventOrigin::Converter)
+            })?;
+        }
+    }
     let start = ctx.registry.game(&route.to).map(|g| g.era.start).unwrap_or(PartialDate::ymd(1936, 1, 1));
     let start = if date > start { date } else { start };
     db.set_era(&route.to, "active", start, None, run.plan.conversion_id)?;
@@ -836,10 +971,10 @@ pub fn generate(
     plan: &TransitionPlan,
     on_step: &mut dyn FnMut(&Step),
 ) -> Result<TransitionPlan, TransitionError> {
-    if !plan.can_generate || !matches!(plan.route.kind, RouteKind::Hoi4ToStellaris | RouteKind::Vic3ToHoi4External) {
+    if !plan.can_generate || !matches!(plan.route.kind, RouteKind::Hoi4ToStellaris | RouteKind::External) {
         return Err(TransitionError::NotReady(plan.blocked_reason.clone().unwrap_or_else(|| "route not supported".into())));
     }
-    if plan.route.kind == RouteKind::Vic3ToHoi4External {
+    if plan.route.kind == RouteKind::External {
         let mut plan = plan.clone();
         let mut run = Run { plan: &mut plan, on_step };
         generate_external(db, ctx, &mut run)?;
@@ -949,7 +1084,7 @@ mod tests {
         let r = route_from(&reg, "hoi4").unwrap();
         assert_eq!((r.to.as_str(), r.via.as_deref(), r.kind), ("stellaris", Some("modern_bridge"), RouteKind::Hoi4ToStellaris));
         assert_eq!(route_from(&reg, "ck3").unwrap().kind, RouteKind::Ck3ToEu5);
-        assert_eq!(route_from(&reg, "eu5").unwrap().kind, RouteKind::Unsupported);
+        assert_eq!(route_from(&reg, "eu5").unwrap().kind, RouteKind::External);
         assert!(route_from(&reg, "stellaris").is_none());
     }
 
@@ -971,7 +1106,7 @@ mod tests {
         assert!(!ready.reached, "default HoI4 → bridge date is 1948");
 
         let mut seen = Vec::new();
-        let plan = prepare(&mut db, &ctx, None, &mut |s| seen.push(s.id)).unwrap();
+        let plan = prepare(&mut db, &ctx, None, None, &mut |s| seen.push(s.id)).unwrap();
         let status = |id| plan.steps.iter().find(|s| s.id == id).unwrap().status;
         assert_eq!(status(StepId::CheckSave), StepStatus::Warning, "1940 < 1948: allowed in manual mode, with a warning");
         assert_eq!(status(StepId::ImportFinal), StepStatus::Done);
@@ -1010,7 +1145,7 @@ mod tests {
         let mut dirs = BTreeMap::new();
         dirs.insert("ck3".to_string(), GameDirs { save_dir: Some(dir), install_dir: None });
         let ctx = Context { registry: &reg, dirs, bridge: BridgeParams::default(), converters: BTreeMap::new() };
-        let plan = prepare(&mut db, &ctx, None, &mut |_| {}).unwrap();
+        let plan = prepare(&mut db, &ctx, None, None, &mut |_| {}).unwrap();
         let status = |id| plan.steps.iter().find(|s| s.id == id).unwrap().status;
         assert_eq!(status(StepId::ImportFinal), StepStatus::Done);
         assert_eq!(status(StepId::FinalSnapshot), StepStatus::Done);
@@ -1039,8 +1174,8 @@ mod tests {
         converters.insert("victoria3->hoi4".to_string(), PathBuf::from("C:/Converters/Vic3ToHoI4/ConverterFrontend.exe"));
         let ctx = Context { registry: &reg, dirs, bridge: BridgeParams::default(), converters };
 
-        let plan = prepare(&mut db, &ctx, None, &mut |_| {}).unwrap();
-        assert_eq!(plan.route.kind, RouteKind::Vic3ToHoi4External);
+        let plan = prepare(&mut db, &ctx, None, None, &mut |_| {}).unwrap();
+        assert_eq!(plan.route.kind, RouteKind::External);
         let status = |p: &TransitionPlan, id| p.steps.iter().find(|s| s.id == id).unwrap().status;
         assert_eq!(status(&plan, StepId::FinalSnapshot), StepStatus::Done);
         assert_eq!(status(&plan, StepId::BuildWorld), StepStatus::Warning, "waiting for the converter");
@@ -1067,10 +1202,57 @@ mod tests {
     }
 
     #[test]
+    fn any_later_game_is_a_target() {
+        let reg = GameRegistry::builtin().unwrap();
+        let t = targets(&reg, "ck3");
+        let to: Vec<&str> = t.iter().map(|r| r.to.as_str()).collect();
+        assert_eq!(to, ["eu5", "victoria3", "hoi4", "stellaris"], "the bridge is simulated, never a target");
+        let hoi = t.iter().find(|r| r.to == "hoi4").unwrap();
+        assert_eq!((hoi.kind, hoi.skipped.clone()), (RouteKind::External, vec!["eu5".to_string(), "victoria3".to_string()]));
+        assert!(route_to(&reg, "hoi4", "ck3").is_none(), "history only moves forward");
+        assert!(route_to(&reg, "hoi4", "modern_bridge").is_none());
+    }
+
+    #[test]
+    fn ck3_to_hoi4_imports_ck3_and_marks_skipped_eras() {
+        let (tmp, mut db, reg) = campaign("ck3");
+        let ck3_dir = tmp.path().join("ck3");
+        std::fs::create_dir_all(&ck3_dir).unwrap();
+        let mut file = b"SAV0102e36d7ab200000000\n".to_vec();
+        file.extend_from_slice(CK3);
+        std::fs::write(ck3_dir.join("final.ck3"), &file).unwrap();
+        let hoi4_docs = tmp.path().join("Hearts of Iron IV");
+        std::fs::create_dir_all(hoi4_docs.join("save games")).unwrap();
+        let mut dirs = BTreeMap::new();
+        dirs.insert("ck3".to_string(), GameDirs { save_dir: Some(ck3_dir), install_dir: None });
+        dirs.insert("hoi4".to_string(), GameDirs { save_dir: Some(hoi4_docs.join("save games")), install_dir: None });
+        let ctx = Context { registry: &reg, dirs, bridge: BridgeParams::default(), converters: BTreeMap::new() };
+
+        let plan = prepare(&mut db, &ctx, None, Some("hoi4"), &mut |_| {}).unwrap();
+        assert_eq!(plan.route.kind, RouteKind::External);
+        let status = |p: &TransitionPlan, id| p.steps.iter().find(|s| s.id == id).unwrap().status;
+        assert_eq!(status(&plan, StepId::ImportFinal), StepStatus::Done, "CK3 is readable: its final world is imported");
+        assert_eq!(status(&plan, StepId::BuildWorld), StepStatus::Blocked, "no converter chosen yet");
+        assert!(plan.can_generate, "the converter can still be run by hand");
+
+        let mod_dir = hoi4_docs.join("mod");
+        std::fs::create_dir_all(mod_dir.join("converted/history")).unwrap();
+        std::fs::write(mod_dir.join("converted.mod"), "name=\"Converted\"\npath=\"mod/converted\"\n").unwrap();
+        let done = generate(&mut db, &ctx, &plan, &mut |_| {}).unwrap();
+        assert!(done.finished, "{:?}", done.steps);
+        let s = db.summary().unwrap();
+        assert_eq!(s.current_game, "hoi4");
+        assert_eq!(s.eras.get("eu5").map(String::as_str), Some("skipped"));
+        assert_eq!(s.eras.get("victoria3").map(String::as_str), Some("skipped"));
+        assert_eq!(s.eras.get("ck3").map(String::as_str), Some("completed"));
+        assert!(db.events_for(0, Some("victoria3"), 10).unwrap().iter().any(|e| e.event_type == "era_skipped"));
+    }
+
+    #[test]
     fn no_save_is_reported_not_crashed() {
         let (_tmp, mut db, reg) = campaign("hoi4");
         let ctx = Context { registry: &reg, dirs: BTreeMap::new(), bridge: BridgeParams::default(), converters: BTreeMap::new() };
-        let plan = prepare(&mut db, &ctx, None, &mut |_| {}).unwrap();
+        let plan = prepare(&mut db, &ctx, None, None, &mut |_| {}).unwrap();
         assert_eq!(plan.steps[0].status, StepStatus::Failed);
         assert_eq!(plan.blocked_reason.as_deref(), Some("no_save"));
     }

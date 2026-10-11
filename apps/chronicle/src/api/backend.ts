@@ -4,7 +4,7 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeParams, BridgeResult, SaveFormatRow, SaveModeChange, CivilizationState, Ck3Import, Hoi4Civilization, Hoi4Import, Readiness, TransitionDone, TransitionPlan, TransitionStep, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
+  BridgeParams, BridgeResult, TransitionRoute, ConverterRow, InstalledConverter, SaveFormatRow, SaveModeChange, CivilizationState, Ck3Import, Hoi4Civilization, Hoi4Import, Readiness, TransitionDone, TransitionPlan, TransitionStep, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
 } from "./types";
 import { mockBootstrap, mockBridge, mockDev, mockEvents, mockTransition } from "./mock";
 
@@ -122,17 +122,30 @@ export const backend = {
         wars: 18, events_added: 19, ownership_changes: 1081, semantic_values: 261, new_entities: 1168, stored_copy: "original/…", warnings: [],
       },
     })),
+  converterCatalog: () =>
+    call<ConverterRow[]>("converter_catalog", {}, () => [
+      { route: "victoria3->hoi4", name: "Victoria 3 → Hearts of Iron IV", repo: "ParadoxGameConverters/Vic3ToHoI4", program: null, version: null },
+    ]),
+  installConverter: (route: string) =>
+    call<InstalledConverter>("install_converter", { route }, () => ({
+      route, program: "C:/Users/me/AppData/Roaming/chronicle/converters/Vic3ToHoI4/1.0/ConverterFrontend.exe", version: "1.0",
+      release_url: "https://github.com/ParadoxGameConverters/Vic3ToHoI4/releases",
+    })),
   getConverters: () => call<Record<string, string>>("get_converters", {}, () => ({})),
   setConverter: (route: string, path: string) => call<void>("set_converter", { route, path }, () => undefined),
   launchConverter: (route: string) => call<string>("launch_converter", { route }, () => "ConverterFrontend.exe"),
   transitionReadiness: () =>
     call<Readiness>("transition_readiness", {}, () => ({
-      route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris" },
+      route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris", skipped: [] },
       newest_save: { path: "C:/saves/autosave.hoi4", name: "autosave.hoi4", size: 59_000_000, modified: 1791580000 },
       save_date: "1940.1.3", transition_date: "1948.1.1", reached: false, support: "full",
     })),
-  transitionPrepare: (savePath: string | null, bridge: BridgeParams) =>
-    call<TransitionPlan>("transition_prepare", { savePath, bridge }, () => mockTransition(false)),
+  transitionTargets: () =>
+    call<TransitionRoute[]>("transition_targets", {}, () => [
+      { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris", skipped: [] },
+    ]),
+  transitionPrepare: (savePath: string | null, bridge: BridgeParams, target: string | null) =>
+    call<TransitionPlan>("transition_prepare", { savePath, bridge, target }, () => mockTransition(false)),
   transitionGenerate: () =>
     call<TransitionDone>("transition_generate", {}, () => ({ plan: mockTransition(true), campaign: mockBootstrap().current_campaign! })),
   /** Live progress of a running transition (desktop only). Returns an unsubscribe function. */

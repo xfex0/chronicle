@@ -77,7 +77,7 @@ export function Dashboard({ app }: { app: AppData }) {
     <section className="page page-wide">
       <p className="eyebrow">{c.name}{c.is_demo ? `, ${t("dev.demoBadge").toLowerCase()}` : ""}</p>
       <h1>{currentName}</h1>
-      <Chain registry={boot.registry} installations={boot.installations} currentGame={c.current_game} />
+      <Chain registry={boot.registry} installations={boot.installations} currentGame={c.current_game} eras={c.eras} />
       <dl className="ledger">
         <div className="ledger-row"><dt>{t("dash.currentDate")}</dt><dd>{formatDate(lang, c.current_date)}</dd></div>
         <div className="ledger-row"><dt>{t("dash.currentGame")}</dt><dd>{currentName}</dd></div>

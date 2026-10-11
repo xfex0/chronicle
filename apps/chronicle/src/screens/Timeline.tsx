@@ -31,6 +31,9 @@ const CATEGORY_OF: Record<string, Category> = {
   space_mars: "science",
   space_interstellar: "science",
   stellaris_empire_designed: "science",
+  era_transition: "realms",
+  era_skipped: "realms",
+  territory_changed_owner: "realms",
 };
 const categoryOf = (e: EventRow): Category => CATEGORY_OF[e.event_type] ?? "other";
 const PAGE = 120;
@@ -302,6 +305,9 @@ function eventText(e: EventRow, t: T): EventText {
       return { title: title("campaign_started"), subject: s(p.name), sentence: t("ev.campaign_started", { name: s(p.name) }) };
     case "stellaris_empire_designed":
       return { title: title("stellaris_empire_designed"), subject: "", sentence: t("ev.stellaris_empire_designed") };
+    case "era_transition":
+    case "era_skipped":
+      return { title: title(e.event_type), subject: `${s(p.from)} → ${s(p.to)}`, sentence: title(e.event_type) };
     default:
       if (e.game === "modern_bridge") {
         const label = t(`bev.${e.event_type}` as Key);

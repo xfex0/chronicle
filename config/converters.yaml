@@ -1,0 +1,11 @@
+# External converters Chronicle can install for era transitions (Settings → Converters, or the
+# Era transition screen). Only these official repositories are downloaded from, and only when
+# the player presses "Install". `executables`: program names to look for in the release, in
+# order of preference (the converter's own frontend first).
+
+version: 1
+converters:
+  - route: "victoria3->hoi4"
+    name: "Victoria 3 → Hearts of Iron IV"
+    repo: "ParadoxGameConverters/Vic3ToHoI4"
+    executables: ["ConverterFrontend.exe", "Vic3ToHoI4Converter.exe", "Vic3ToHoi4Converter.exe"]

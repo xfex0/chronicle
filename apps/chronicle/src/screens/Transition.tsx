@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { BridgeParams, Readiness, StepStatus, TransitionMode, TransitionPlan, TransitionStep } from "../api/types";
+import type { BridgeParams, ConverterRow, Readiness, StepStatus, TransitionMode, TransitionPlan, TransitionRoute, TransitionStep } from "../api/types";
 import { Icon } from "../components/Icons";
 import { errorText, formatDate, useI18n, type Key } from "../i18n";
 
@@ -20,12 +20,18 @@ export function Transition({ app }: { app: AppData }) {
   const [savePath, setSavePath] = useState<string | null>(null);
   const [bridge, setBridge] = useState<BridgeParams>({ seed: 45819283, start_year: null, empire_name: "", adjective: "Terran" });
   const [converters, setConverters] = useState<Record<string, string>>({});
+  const [targets, setTargets] = useState<TransitionRoute[]>([]);
+  const [catalog, setCatalog] = useState<ConverterRow[]>([]);
+  const [installing, setInstalling] = useState(false);
+  const [target, setTarget] = useState<string | null>(null);
   const fail = (e: unknown) => app.notify(errorText(t, errorCode(e)), "error");
 
   useEffect(() => {
     if (!campaign) return;
     backend.transitionReadiness().then(setReady).catch(fail);
     backend.getConverters().then(setConverters).catch(() => setConverters({}));
+    backend.converterCatalog().then(setCatalog).catch(() => setCatalog([]));
+    backend.transitionTargets().then((t) => { setTargets(t); setTarget(t[0]?.to ?? null); }).catch(() => setTargets([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [campaign?.id, campaign?.current_game]);
 
@@ -45,7 +51,8 @@ export function Transition({ app }: { app: AppData }) {
     );
   }
 
-  const route = plan?.route ?? ready?.route ?? null;
+  const chosen = targets.find((r) => r.to === target) ?? null;
+  const route = plan?.route ?? chosen ?? ready?.route ?? null;
   const name = (g: string) => registry.games[g]?.display_name ?? g;
   const mode = campaign.settings.transition_mode;
 
@@ -62,7 +69,7 @@ export function Transition({ app }: { app: AppData }) {
     setPlan(null);
     setPhase("preparing");
     try {
-      const p = await backend.transitionPrepare(savePath, bridge);
+      const p = await backend.transitionPrepare(savePath, bridge, target);
       setPlan(p);
       setPhase("preview");
       if (p.preview?.design && !bridge.empire_name) setBridge((b) => ({ ...b, empire_name: suggested(p.preview!.design!.authority, p.preview!.design!.origin) }));
@@ -94,6 +101,19 @@ export function Transition({ app }: { app: AppData }) {
       setConverters(await backend.getConverters());
     } catch (e) {
       fail(e);
+    }
+  }
+  async function installConverter() {
+    setInstalling(true);
+    try {
+      const r = await backend.installConverter(routeKey);
+      setConverters(await backend.getConverters());
+      setCatalog(await backend.converterCatalog());
+      app.notify(t("ext.installed", { version: r.version }));
+    } catch (e) {
+      fail(e);
+    } finally {
+      setInstalling(false);
     }
   }
   async function openConverter() {
@@ -128,14 +148,34 @@ export function Transition({ app }: { app: AppData }) {
             <Icon name={route.from} size={30} />
             <div><strong>{name(route.from)}</strong><span>{t("tr2.current")}</span></div>
           </div>
-          <div className="route-arrow" aria-hidden="true">↓{route.via && <span className="route-via">{name(route.via)}</span>}</div>
+          <div className="route-arrow" aria-hidden="true">
+            ↓{route.via && <span className="route-via">{name(route.via)}</span>}
+            {route.skipped.length > 0 && <span className="route-via is-skipped">{t("tr2.skipping", { list: route.skipped.map(name).join(", ") })}</span>}
+          </div>
           <div className="route-game" data-game={route.to}>
             <Icon name={route.to} size={30} />
-            <div><strong>{name(route.to)}</strong><span>{t(`tr2.support.${ready?.support ?? "none"}` as Key)}</span></div>
+            <div><strong>{name(route.to)}</strong><span>{t(`tr2.kind.${route.kind}` as Key)}</span></div>
           </div>
         </div>
       ) : (
         <p className="notice">{t("tr2.noNext")}</p>
+      )}
+
+      {targets.length > 1 && phase !== "done" && (
+        <fieldset className="group">
+          <legend>{t("tr2.target")}</legend>
+          {targets.map((r) => (
+            <label key={r.to} className="radio">
+              <input type="radio" name="target" checked={target === r.to} disabled={running}
+                     onChange={() => { setTarget(r.to); setPlan(null); setPhase("idle"); setLive({}); }} />
+              <span>
+                <strong>{name(r.to)}</strong>{" "}
+                {t(`tr2.kind.${r.kind}` as Key)}
+                {r.skipped.length > 0 && <span className="muted"> · {t("tr2.skipping", { list: r.skipped.map(name).join(", ") })}</span>}
+              </span>
+            </label>
+          ))}
+        </fieldset>
       )}
 
       <dl className="facts">
@@ -188,12 +228,21 @@ export function Transition({ app }: { app: AppData }) {
         </fieldset>
       )}
 
-      {route?.kind === "vic3_to_hoi4_external" && (
+      {route?.kind === "external" && (
         <fieldset className="group">
           <legend>{t("ext.title")}</legend>
           <p className="hint">{t("ext.hint")}</p>
           <p>{converters[routeKey] ? <code>{converters[routeKey]}</code> : <span className="muted">{t("ext.notSet")}</span>}</p>
           <div className="actions compact">
+            {catalog.some((c) => c.route === routeKey) && (
+              <button className={converters[routeKey] ? "" : "primary"} onClick={installConverter} disabled={installing}>
+                {installing
+                  ? t("ext.installing")
+                  : catalog.find((c) => c.route === routeKey)?.version
+                    ? t("ext.update", { version: catalog.find((c) => c.route === routeKey)?.version ?? "" })
+                    : t("ext.install")}
+              </button>
+            )}
             <button onClick={chooseConverter}>{t("ext.choose")}</button>
             {converters[routeKey] && plan && <button className="primary" onClick={openConverter}>{t("ext.open")}</button>}
           </div>
@@ -260,7 +309,7 @@ export function Transition({ app }: { app: AppData }) {
               <button className="primary" onClick={confirm} disabled={!plan.can_generate || phase === "generating"}>
                 {phase === "generating"
                   ? t("tr2.generating")
-                  : plan.route.kind === "vic3_to_hoi4_external"
+                  : plan.route.kind === "external"
                     ? t("ext.finish")
                     : t("tr2.create", { game: name(plan.route.to) })}
               </button>

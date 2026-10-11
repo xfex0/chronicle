@@ -733,12 +733,26 @@ fn transition_dirs(state: &AppState) -> Result<BTreeMap<String, chronicle_transi
 /// External converters by route, stored in the app settings ("converter.victoria3->hoi4").
 fn transition_converters(state: &AppState) -> BTreeMap<String, PathBuf> {
     let db = relock(&state.db);
-    ["victoria3->hoi4"]
-        .iter()
-        .filter_map(|route| {
-            db.get_setting(&format!("converter.{route}")).ok().flatten().map(|p| (route.to_string(), PathBuf::from(p)))
-        })
-        .collect()
+    let chain = &state.registry.chain;
+    let mut out = BTreeMap::new();
+    for (i, from) in chain.iter().enumerate() {
+        for to in &chain[i + 1..] {
+            let route = format!("{from}->{to}");
+            if let Ok(Some(p)) = db.get_setting(&format!("converter.{route}")) {
+                out.insert(route, PathBuf::from(p));
+            }
+        }
+    }
+    out
+}
+
+/// Every later game the open campaign can move to (nearest first), with how each would work.
+#[tauri::command]
+fn transition_targets(state: State<'_, AppState>) -> CmdResult<Vec<chronicle_transition::Route>> {
+    let guard = relock(&state.campaign);
+    let db = guard.as_ref().ok_or("no_campaign")?;
+    let current = db.summary().map_err(err)?.current_game;
+    Ok(chronicle_transition::targets(&state.registry, &current))
 }
 
 #[tauri::command]
@@ -753,6 +767,52 @@ fn set_converter(state: State<'_, AppState>, route: String, path: String) -> Cmd
         return Err("file_not_found".into());
     }
     relock(&state.db).set_setting(&format!("converter.{route}"), &path).map_err(err)
+}
+
+#[derive(Serialize)]
+struct ConverterRow {
+    route: String,
+    name: String,
+    repo: String,
+    /// Program chosen or installed for this route, if any.
+    program: Option<String>,
+    /// Version installed by Chronicle (None when chosen by hand or not installed).
+    version: Option<String>,
+}
+
+/// Converters Chronicle can install, with what is set up for each route.
+#[tauri::command]
+fn converter_catalog(state: State<'_, AppState>) -> CmdResult<Vec<ConverterRow>> {
+    let chosen = transition_converters(&state);
+    let db = relock(&state.db);
+    Ok(chronicle_converters::catalog()
+        .map_err(err)?
+        .into_iter()
+        .map(|e| ConverterRow {
+            program: chosen.get(&e.route).map(|p| p.display().to_string()),
+            version: db.get_setting(&format!("converter_version.{}", e.route)).ok().flatten(),
+            route: e.route,
+            name: e.name,
+            repo: e.repo,
+        })
+        .collect())
+}
+
+/// Download the latest official release of the converter for `route` (GitHub), unpack it into
+/// Chronicle's data folder and use it for that route. Only on the player's request.
+#[tauri::command]
+async fn install_converter(app: tauri::AppHandle, route: String) -> CmdResult<chronicle_converters::Installed> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let base = app.path().app_data_dir().map_err(err)?.join("converters");
+        let installed = chronicle_converters::install(&route, &base).map_err(err)?;
+        let state = app.state::<AppState>();
+        let db = relock(&state.db);
+        db.set_setting(&format!("converter.{route}"), &installed.program.display().to_string()).map_err(err)?;
+        db.set_setting(&format!("converter_version.{route}"), &installed.version).map_err(err)?;
+        Ok(installed)
+    })
+    .await
+    .map_err(err)?
 }
 
 /// Start the external converter program in its own folder (it is a separate application).
@@ -787,6 +847,7 @@ async fn transition_prepare(
     app: tauri::AppHandle,
     save_path: Option<String>,
     bridge: Option<chronicle_transition::BridgeParams>,
+    target: Option<String>,
 ) -> CmdResult<chronicle_transition::TransitionPlan> {
     tauri::async_runtime::spawn_blocking(move || {
         let state = app.state::<AppState>();
@@ -804,7 +865,7 @@ async fn transition_prepare(
             let _ = emitter.emit("transition-step", s);
         };
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            chronicle_transition::prepare(db, &ctx, save_path.map(PathBuf::from), &mut on_step)
+            chronicle_transition::prepare(db, &ctx, save_path.map(PathBuf::from), target.as_deref(), &mut on_step)
         }));
         let plan = match outcome {
             Ok(r) => r.map_err(err)?,
@@ -993,9 +1054,12 @@ fn main() {
             import_ck3_save,
             import_hoi4_save,
             transition_readiness,
+            transition_targets,
             get_converters,
             set_converter,
             launch_converter,
+            converter_catalog,
+            install_converter,
             transition_prepare,
             transition_generate
         ])
