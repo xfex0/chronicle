@@ -89,6 +89,9 @@ games:
       documents_subpath: ["Paradox Interactive/Hearts of Iron IV/save games"]
       verified: true
     save_formats: { plaintext: planned, compressed: planned, binary: unsupported }
+    # Chronicle can switch the game to text saves (Settings → Save format). Verified by a player
+    # on 1.19: settings.txt in the documents folder, save_as_binary=no → saves start with HOI4txt.
+    text_save_setting: { file: "settings.txt", key: "save_as_binary", text_value: "no", binary_value: "yes", verified: true }
     save_extensions: [".hoi4"]
   modern_bridge:
     display_name: "Modern Era Bridge"

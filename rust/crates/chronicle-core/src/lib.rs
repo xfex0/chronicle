@@ -14,7 +14,7 @@ pub use date::PartialDate;
 pub use events::{DatePrecision, EventEvidence, EventOrigin};
 pub use ids::{ChronicleId, EntityKind};
 pub use platform::{InstallSource, Platform};
-pub use registry::{FormatSupport, GameDef, GameRegistry, RegistryError, SaveFormat, TransitionDef};
+pub use registry::{FormatSupport, GameDef, GameRegistry, RegistryError, SaveFormat, TextSaveSetting, TransitionDef};
 pub use settings::{CampaignSettings, TargetStart, TransitionMode};
 
 pub const CHRONICLE_VERSION: &str = env!("CARGO_PKG_VERSION");

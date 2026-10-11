@@ -4,7 +4,7 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeParams, BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, Hoi4Import, Readiness, TransitionDone, TransitionPlan, TransitionStep, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
+  BridgeParams, BridgeResult, SaveFormatRow, SaveModeChange, CivilizationState, Ck3Import, Hoi4Civilization, Hoi4Import, Readiness, TransitionDone, TransitionPlan, TransitionStep, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
 } from "./types";
 import { mockBootstrap, mockBridge, mockDev, mockEvents, mockTransition } from "./mock";
 
@@ -39,6 +39,15 @@ export const backend = {
     call<InstallationRow[]>("link_game_folder", { game, path }, () => mockBootstrap().installations),
   linkSaveFolder: (game: string, path: string) =>
     call<InstallationRow[]>("link_save_folder", { game, path }, () => mockBootstrap().installations),
+  saveFormatStatus: () =>
+    call<SaveFormatRow[]>("save_format_status", {}, () => [
+      { game: "hoi4", verified: true, status: { settings_file: "C:/Users/me/Documents/Paradox Interactive/Hearts of Iron IV/settings.txt", exists: true, mode: "binary" } },
+    ]),
+  setSaveFormat: (game: string, text: boolean) =>
+    call<SaveModeChange>("set_save_format", { game, text }, () => ({
+      settings_file: "C:/Users/me/Documents/Paradox Interactive/Hearts of Iron IV/settings.txt",
+      backup: "…/settings.txt.chronicle-1791700000.bak", mode: text ? "text" : "binary", changed: true,
+    })),
   listSaves: (game: string) =>
     call<SaveFileInfo[]>("list_saves", { game }, () =>
       game === "ck3" ? [{ path: "C:/Users/me/Downloads/Sobstvennyj_stsenarij_na_923.ck3", name: "Sobstvennyj_stsenarij_na_923.ck3", size: 12106161, modified: 1791580000 }] : []),

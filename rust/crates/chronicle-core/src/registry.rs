@@ -48,6 +48,18 @@ pub struct SaveDirHint {
     pub verified: bool,
 }
 
+/// Where a game keeps its "binary or text saves" option (e.g. HoI4 settings.txt save_as_binary).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TextSaveSetting {
+    /// File in the game's documents folder (the parent of its save folder).
+    pub file: String,
+    pub key: String,
+    pub text_value: String,
+    pub binary_value: String,
+    #[serde(default)]
+    pub verified: bool,
+}
+
 /// Kinds of save files, as detected from the container (see paradox-parser).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -103,6 +115,9 @@ pub struct GameDef {
     /// File extensions of this game's saves, e.g. [".ck3"].
     #[serde(default)]
     pub save_extensions: Vec<String>,
+    /// Option that switches the game between binary and text saves, when known.
+    #[serde(default)]
+    pub text_save_setting: Option<TextSaveSetting>,
 }
 
 impl GameDef {
@@ -255,6 +270,8 @@ mod tests {
         assert_eq!(r.game("hoi4").unwrap().format_support(SaveFormat::Binary), FormatSupport::Unsupported);
         assert_eq!(r.game("eu5").unwrap().format_support(SaveFormat::Binary), FormatSupport::Planned);
         assert_eq!(ck3.save_extensions, [".ck3"]);
+        let hoi = r.game("hoi4").unwrap().text_save_setting.as_ref().unwrap();
+        assert_eq!((hoi.file.as_str(), hoi.key.as_str(), hoi.text_value.as_str()), ("settings.txt", "save_as_binary", "no"));
     }
 
     #[test]

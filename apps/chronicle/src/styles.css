@@ -221,6 +221,9 @@ th { font-weight: 500; }
 .delta.up { color: var(--verdigris); }
 .delta.down { color: var(--madder); }
 
+.save-format { margin-bottom: 12px; }
+.save-format .card-head h2 { display: flex; align-items: center; gap: 8px; }
+
 /* Save lists on game cards */
 .saves { margin-top: 12px; border-top: 1px dotted var(--rule); padding-top: 10px; }
 .saves-title { margin: 0 0 6px; font-weight: 600; }

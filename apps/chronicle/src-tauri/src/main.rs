@@ -159,6 +159,49 @@ fn reset_game_detection(state: State<'_, AppState>, game: String) -> CmdResult<(
     relock(&state.db).reset_manual(&game).map_err(err)
 }
 
+#[derive(Serialize)]
+struct SaveFormatRow {
+    game: String,
+    /// None when the game's save folder is unknown (set it on the Games screen).
+    status: Option<chronicle_steam::SaveModeStatus>,
+    verified: bool,
+}
+
+/// Games whose binary/text save option Chronicle can switch, with their current mode.
+#[tauri::command]
+fn save_format_status(state: State<'_, AppState>) -> CmdResult<Vec<SaveFormatRow>> {
+    let rows = relock(&state.db).installations().map_err(err)?;
+    Ok(state
+        .registry
+        .games
+        .values()
+        .filter_map(|g| g.text_save_setting.as_ref().map(|s| (g, s)))
+        .map(|(g, setting)| {
+            let dir = rows.iter().find(|r| r.game_key == g.key).and_then(|r| r.save_path.clone());
+            SaveFormatRow {
+                game: g.key.clone(),
+                status: dir.map(|d| chronicle_steam::read_mode(&chronicle_steam::docs_dir(std::path::Path::new(&d)), setting)),
+                verified: setting.verified,
+            }
+        })
+        .collect())
+}
+
+/// Switch a game to text (`text = true`) or binary saves. The game must be closed.
+#[tauri::command]
+fn set_save_format(state: State<'_, AppState>, game: String, text: bool) -> CmdResult<chronicle_steam::SaveModeChange> {
+    let def = state.registry.game(&game).ok_or_else(|| format!("unknown game {game}"))?;
+    let setting = def.text_save_setting.as_ref().ok_or("no_text_save_setting")?;
+    let dir = relock(&state.db)
+        .installations()
+        .map_err(err)?
+        .into_iter()
+        .find(|r| r.game_key == game)
+        .and_then(|r| r.save_path)
+        .ok_or("save_folder_unknown")?;
+    chronicle_steam::set_mode(&chronicle_steam::docs_dir(std::path::Path::new(&dir)), setting, text).map_err(err)
+}
+
 /// Save files in the game's save folder (newest first). Only lists names, sizes and dates.
 #[tauri::command]
 fn list_saves(state: State<'_, AppState>, game: String) -> CmdResult<Vec<chronicle_steam::SaveFileInfo>> {
@@ -479,6 +522,43 @@ fn stellaris_create_mod(
     Ok(StellarisTransition { result, events_added, campaign })
 }
 
+/// Markdown card of the empire (EN/UK headings) to recreate or check it in the game.
+fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
+    let v = chronicle_bridge::Vocabulary::builtin();
+    let d = &r.design;
+    let ethic_name = |e: &str| -> String {
+        let base = e.trim_start_matches("fanatic_");
+        let name = v.ethics.get(base).map(|x| x.name.clone()).unwrap_or_else(|| base.to_string());
+        if e.starts_with("fanatic_") { format!("Fanatic {name}") } else { name }
+    };
+    let (t_title, t_auth, t_eth, t_civ, t_org, t_hist, t_conf, t_how) = if uk {
+        ("Імперія Землі для Stellaris", "Влада", "Етика", "Цивіки", "Походження", "Історія (симуляція)", "Впевненість",
+         "Додайте цю імперію в Stellaris кнопкою «Додати в Stellaris» у Chronicle або створіть її в редакторі імперій гри.")
+    } else {
+        ("Earth empire for Stellaris", "Authority", "Ethics", "Civics", "Origin", "History (simulated)", "Confidence",
+         "Add this empire with Chronicle's “Add to Stellaris” button, or create it in the game's empire designer.")
+    };
+    let mut out = format!("# {t_title}\n\nseed {}\n\n", r.seed);
+    out += &format!("- **{t_auth}:** {}\n", v.authorities.get(&d.authority).map(|a| a.name.as_str()).unwrap_or(d.authority.as_str()));
+    out += &format!("- **{t_eth}:** {}\n", d.ethics.iter().map(|e| ethic_name(e)).collect::<Vec<_>>().join(", "));
+    out += &format!(
+        "- **{t_civ}:** {}\n",
+        d.civics.iter().map(|c| v.civics.get(c).map(|x| x.name.clone()).unwrap_or_else(|| c.clone())).collect::<Vec<_>>().join(", ")
+    );
+    out += &format!("- **{t_org}:** {}\n\n", v.origins.get(&d.origin).map(|o| o.name.as_str()).unwrap_or(d.origin.as_str()));
+    out += &format!("## {t_conf}\n\n");
+    for dec in &d.decisions {
+        out += &format!("- {}: {:.0}% ({})\n", dec.part, dec.confidence * 100.0, dec.review_state);
+    }
+    out += &format!("\n## {t_hist}: {}–2200\n\n", r.start_year);
+    for e in &r.run.events {
+        out += &format!("- {}s: {}\n", e.year, e.kind.replace('_', " "));
+    }
+    out += &format!("\n{t_how}\n");
+    out
+}
+
+/// Save the design as JSON (machine-readable) and Markdown (a readable card).
 #[tauri::command]
 fn bridge_export(
     civ: chronicle_bridge::CivilizationState,
@@ -831,6 +911,8 @@ fn main() {
             link_save_folder,
             reset_game_detection,
             list_saves,
+            save_format_status,
+            set_save_format,
             steam_log,
             open_folder,
             launch_game,

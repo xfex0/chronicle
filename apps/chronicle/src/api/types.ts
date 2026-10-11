@@ -272,3 +272,8 @@ export interface Readiness {
   reached: boolean; support: "full" | "partial" | "none";
 }
 export interface TransitionDone { plan: TransitionPlan; campaign: CampaignSummary }
+
+export type SaveMode = "binary" | "text" | "not_set";
+export interface SaveModeStatus { settings_file: string; exists: boolean; mode: SaveMode }
+export interface SaveFormatRow { game: string; status: SaveModeStatus | null; verified: boolean }
+export interface SaveModeChange { settings_file: string; backup: string | null; mode: SaveMode; changed: boolean }
