@@ -4,9 +4,9 @@
 import type {
   Bootstrap, CampaignSettings, CampaignSummary, Check, DemoResult, EntityLabel, EventRow, InstallationRow,
   Language, NewCampaignInput, OwnershipPeriod, Period, QueryResult, SaveInfo, SteamInstall, TargetStart,
-  BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
+  BridgeParams, BridgeResult, CivilizationState, Ck3Import, Hoi4Civilization, Hoi4Import, Readiness, TransitionDone, TransitionPlan, TransitionStep, SaveFileInfo, StellarisCompare, StellarisTransition, StellarisVocabulary,
 } from "./types";
-import { mockBootstrap, mockBridge, mockDev, mockEvents } from "./mock";
+import { mockBootstrap, mockBridge, mockDev, mockEvents, mockTransition } from "./mock";
 
 export const inTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -52,7 +52,8 @@ export const backend = {
   openCampaign: (path: string) => call<CampaignSummary>("open_campaign", { path }, () => mockBootstrap().current_campaign!),
   updateSettings: (settings: CampaignSettings) =>
     call<CampaignSummary>("update_campaign_settings", { settings }, () => ({ ...mockBootstrap().current_campaign!, settings })),
-  events: (minImportance: number) => call<EventRow[]>("campaign_events", { minImportance }, () => mockEvents(minImportance)),
+  events: (minImportance: number, game: string | null = null) =>
+    call<EventRow[]>("campaign_events", { minImportance, game }, () => mockEvents(minImportance).filter((e) => !game || e.game === game)),
   backup: () => call<string>("backup_campaign", {}, () => "backups/campaign-manual-0.db"),
   checkTransitionDate: (from: string, to: string, date: string, targetStart: TargetStart) =>
     call<void>("check_transition_date", { from, to, date, targetStart }, () => undefined),
@@ -88,9 +89,9 @@ export const backend = {
   stellarisCreateMod: (civ: CivilizationState, seed: number, startYear: number, empireName: string, adjective: string) =>
     call<StellarisTransition>("stellaris_create_mod", { civ, seed, startYear, empireName, adjective }, () => ({
       result: {
-        mod_dir: "C:/Users/me/Documents/Paradox Interactive/Stellaris/mod/chronicle_earth",
-        launcher_file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/mod/chronicle_earth.mod",
-        files: [], template_source: "game: …/prescripted_countries/00_top_prescripted_countries.txt", warnings: [],
+        file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt",
+        backup: "C:/Users/me/Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt.chronicle-1791700000.bak",
+        empire_name: empireName || "Terran Federation", replaced: false, warnings: [],
       },
       events_added: 7, campaign: null,
     })),
@@ -104,6 +105,30 @@ export const backend = {
         semantic_values: 876, player_realm: "Гуджарат", stored_copy: "original/…", snapshot_id: 1, warnings: [],
       },
     })),
+  importHoi4: (path: string) =>
+    call<Hoi4Import>("import_hoi4_save", { path }, () => ({
+      campaign: mockBootstrap().current_campaign!,
+      report: {
+        game_version: "1.19.3", version_verified: true, date: "1940.1.3", player: "GER", countries: 87, states: 1081,
+        wars: 18, events_added: 19, ownership_changes: 1081, semantic_values: 261, new_entities: 1168, stored_copy: "original/…", warnings: [],
+      },
+    })),
+  transitionReadiness: () =>
+    call<Readiness>("transition_readiness", {}, () => ({
+      route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris" },
+      newest_save: { path: "C:/saves/autosave.hoi4", name: "autosave.hoi4", size: 59_000_000, modified: 1791580000 },
+      save_date: "1940.1.3", transition_date: "1948.1.1", reached: false, support: "full",
+    })),
+  transitionPrepare: (savePath: string | null, bridge: BridgeParams) =>
+    call<TransitionPlan>("transition_prepare", { savePath, bridge }, () => mockTransition(false)),
+  transitionGenerate: () =>
+    call<TransitionDone>("transition_generate", {}, () => ({ plan: mockTransition(true), campaign: mockBootstrap().current_campaign! })),
+  /** Live progress of a running transition (desktop only). Returns an unsubscribe function. */
+  onTransitionStep: async (cb: (s: TransitionStep) => void): Promise<() => void> => {
+    if (!inTauri) return () => {};
+    const { listen } = await import("@tauri-apps/api/event");
+    return listen<TransitionStep>("transition-step", (e) => cb(e.payload));
+  },
   hoi4ReadWorld: (path: string) => call<Hoi4Civilization>("hoi4_read_world", { path }, mockBridge.hoi4),
   stellarisReadEmpire: (path: string, civ: CivilizationState | null, seed: number | null, startYear: number | null) =>
     call<StellarisCompare>("stellaris_read_empire", { path, civ, seed, startYear }, mockBridge.compare),

@@ -30,8 +30,23 @@ pub const EMPIRE_KEY: &str = "chronicle_earth";
 const LANGUAGES: [&str; 10] =
     ["english", "russian", "german", "french", "spanish", "polish", "braz_por", "japanese", "korean", "simp_chinese"];
 
-/// Fields Chronicle sets; any of them in the template is removed first.
-const REPLACED: [&str; 8] = ["name", "adjective", "spawn_enabled", "authority", "civics", "origin", "ethic", "government"];
+/// Fields Chronicle sets or must drop; any of them in the template is removed first.
+/// `playable`: the game's own human block carries `playable = empire_design_never` (seen in a
+/// player's install), which hides an empire from the selection screen — ours must be playable.
+const REPLACED: [&str; 9] = ["name", "adjective", "spawn_enabled", "authority", "civics", "origin", "ethic", "government", "playable"];
+
+/// A government that goes with each authority, taken from the game's own empire designs
+/// (Stellaris 4.5: UNE, Oviron Lodge, Commonwealth of Man, Tzynn). Every design in 4.x names a
+/// government; without one the empire is not offered for selection.
+fn government_for(authority: &str) -> &'static str {
+    match authority {
+        "democratic" => "gov_representative_democracy",
+        "oligarchic" => "gov_executive_committee",
+        "dictatorial" => "gov_military_dictatorship",
+        "imperial" => "gov_star_empire",
+        _ => "gov_representative_democracy",
+    }
+}
 
 const BUILTIN_TEMPLATE: &str = r#"chronicle_earth = {
 	species = {
@@ -90,19 +105,26 @@ pub fn find_human_template(install_dir: &Path) -> Option<(PathBuf, String)> {
         .filter(|p| p.extension().is_some_and(|x| x.eq_ignore_ascii_case("txt")))
         .collect();
     files.sort();
+    // Best: a playable human empire from Earth. Stellaris 4.x keeps old designs as stubs with
+    // `playable = empire_design_never` (e.g. `humans1`) next to the real one (`humans1_1`).
+    let mut fallback: Option<(PathBuf, String)> = None;
     for file in files {
         let Ok(bytes) = std::fs::read(&file) else { continue };
         let Ok(idx) = TopLevelIndex::build(&bytes) else { continue };
         for span in idx.spans.iter().filter(|s| s.is_block) {
-            let body = &bytes[span.value_start..span.value_end];
-            let text = String::from_utf8_lossy(body);
-            if text.contains("\"HUM\"") || text.contains("class = HUM") || text.contains("class=\"HUM\"") {
-                let block = String::from_utf8_lossy(&bytes[span.key_offset..span.value_end]).into_owned();
+            let text = String::from_utf8_lossy(&bytes[span.value_start..span.value_end]);
+            let human = text.contains("\"HUM\"") || text.contains("class = HUM") || text.contains("class=\"HUM\"");
+            if !human || text.contains("empire_design_never") || text.contains("secondary_species") {
+                continue;
+            }
+            let block = String::from_utf8_lossy(&bytes[span.key_offset..span.value_end]).into_owned();
+            if text.contains("NAME_Earth") && !text.contains("playable") {
                 return Some((file, block));
             }
+            fallback.get_or_insert((file.clone(), block));
         }
     }
-    None
+    fallback
 }
 
 /// Net brace depth change of one line, ignoring braces inside quotes and after `#`.
@@ -155,6 +177,20 @@ pub fn build_empire_block(template: &str, design: &EmpireDesign, vocab: &Vocabul
     }
 
     let authority = vocab.authorities.get(&design.authority).map(|a| a.key.clone()).unwrap_or(format!("auth_{}", design.authority));
+    // Keep the template's government when the authority is the same; otherwise use one the game
+    // itself pairs with this authority.
+    let template_root = paradox_parser::parse(template.as_bytes()).ok();
+    let template_block = template_root.as_ref().and_then(|p| {
+        p.root.entries.iter().find_map(|e| match e {
+            paradox_parser::Entry::Pair { value, .. } => value.as_container(),
+            _ => None,
+        })
+    });
+    let text_of = |key: &str| template_block.and_then(|b| b.get(key)).and_then(|v| v.as_scalar()).map(|s| s.as_str().into_owned());
+    let government = match (text_of("authority"), text_of("government")) {
+        (Some(a), Some(g)) if a == authority => g,
+        _ => government_for(&design.authority).to_string(),
+    };
     let origin = vocab.origins.get(&design.origin).map(|o| o.key.clone()).unwrap_or(format!("origin_{}", design.origin));
     let civics: Vec<String> = design.civics.iter().map(|c| format!("\"civic_{c}\"")).collect();
     let mut out = format!("{EMPIRE_KEY} = {{\n");
@@ -162,6 +198,7 @@ pub fn build_empire_block(template: &str, design: &EmpireDesign, vocab: &Vocabul
     out += &format!("\tadjective = \"{EMPIRE_KEY}_adj\"\n");
     out += "\tspawn_enabled = no\n";
     out += &format!("\tauthority = \"{authority}\"\n");
+    out += &format!("\tgovernment = \"{government}\"\n");
     out += &format!("\tcivics = {{ {} }}\n", civics.join(" "));
     out += &format!("\torigin = \"{origin}\"\n");
     for e in &design.ethics {
@@ -270,6 +307,20 @@ pub fn write_mod(
     Ok(ModResult { mod_dir: dir, launcher_file, files, template_source, warnings })
 }
 
+/// Version of the INSTALLED game, read from `launcher-settings.json` in the game folder
+/// (`"rawVersion": "4.0.23"` or `"version": "Phoenix v4.0.23 (…)"`). This is what the Paradox
+/// Launcher compares with a mod's `supported_version`; a save's version can be older.
+pub fn installed_version(install_dir: &Path) -> Option<String> {
+    let text = std::fs::read_to_string(install_dir.join("launcher-settings.json")).ok()?;
+    let raw = text.split("\"rawVersion\"").nth(1).and_then(|rest| {
+        let start = rest.find('"')? + 1;
+        let end = start + rest[start..].find('"')?;
+        Some(rest[start..end].trim_start_matches('v').to_string())
+    });
+    raw.filter(|v| v.split('.').take(2).all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_digit())))
+        .or_else(|| paradox_parser::sniff_version(text.as_bytes()))
+}
+
 /// Stellaris' mod folder next to its save folder (…/Stellaris/save games → …/Stellaris/mod).
 pub fn mod_root_from_save_dir(save_dir: &Path) -> PathBuf {
     let base = if save_dir.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case("save games")) {
@@ -310,7 +361,9 @@ mod tests {
 		portrait = "human"
 		trait = "trait_adaptive"
 	}
+	playable = empire_design_never # scripted_triggers
 	room = "personality_federation_builders_room"
+	government = gov_representative_democracy
 	authority = "auth_democratic"
 	civics = {
 		"civic_beacon_of_liberty"
@@ -352,6 +405,15 @@ mod tests {
         assert_eq!(b.get("ship_prefix").unwrap().as_scalar().unwrap().as_str(), "PRESCRIPTED_ship_prefix_humans1");
         assert_eq!(b.get_all("name").count(), 1, "old name removed, new name added");
         assert!(!out.contains("beacon_of_liberty"), "template civics removed");
+        assert!(b.get("playable").is_none(), "`playable = empire_design_never` would hide the empire");
+        assert_eq!(b.get("government").unwrap().as_scalar().unwrap().as_str(), "gov_military_dictatorship",
+                   "authority changed, so the government follows it");
+        assert_eq!(b.get_all("government").count(), 1);
+        // same authority as the template → the template's government is kept
+        let start = presets().into_iter().find(|(n, _)| *n == "global_democracy").unwrap().1;
+        let dem = run(&start, 45_819_283).unwrap().design;
+        let out = build_empire_block(TEMPLATE, &dem, Vocabulary::builtin()).unwrap();
+        assert!(out.contains("government = \"gov_representative_democracy\""));
     }
 
     #[test]
@@ -359,13 +421,19 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let install = tmp.path().join("Stellaris");
         std::fs::create_dir_all(install.join("prescripted_countries")).unwrap();
-        std::fs::write(install.join("prescripted_countries/00_top.txt"), TEMPLATE).unwrap();
+        // a 4.x-style stub first: it must be skipped in favour of the playable design
+        let playable = TEMPLATE.replace("\tplayable = empire_design_never # scripted_triggers\n", "");
+        assert!(!playable.contains("playable"));
+        let stub = TEMPLATE.replace("humans1 = {", "humans0 = {");
+        std::fs::write(install.join("prescripted_countries/00_top.txt"), format!("{stub}\n{}", playable.replace("humans1 = {", "humans1_1 = {"))).unwrap();
         let mod_root = mod_root_from_save_dir(&tmp.path().join("docs/Stellaris/save games"));
         std::fs::create_dir_all(&mod_root).unwrap();
         let d = dictatorship();
         let opts = ModOptions { empire_name: "Terran Directorate".into(), adjective: "Terran".into(), game_version: Some("3.14.15".into()) };
         let r = write_mod(&mod_root, &d, Vocabulary::builtin(), Some(&install), &opts).unwrap();
         assert!(r.template_source.starts_with("game: "));
+        let written = std::fs::read_to_string(r.mod_dir.join("prescripted_countries/chronicle_earth.txt")).unwrap();
+        assert!(!written.contains("playable"), "the stub was skipped, the playable design was used");
         assert!(mod_root.ends_with("docs/Stellaris/mod"));
         let launcher = std::fs::read_to_string(&r.launcher_file).unwrap();
         assert!(launcher.contains("supported_version=\"v3.14.*\"") && launcher.contains("path=\""));
@@ -385,6 +453,16 @@ mod tests {
         assert_eq!(r.template_source, "builtin");
         assert!(!r.warnings.is_empty());
         assert!(std::fs::read_to_string(&r.launcher_file).unwrap().contains("supported_version=\"v3.*\""));
+    }
+
+    #[test]
+    fn installed_version_from_launcher_settings() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("launcher-settings.json"), r#"{ "gameId": "stellaris", "version": "Phoenix v4.0.23 (abcd)", "rawVersion": "4.0.23" }"#).unwrap();
+        assert_eq!(installed_version(tmp.path()).as_deref(), Some("4.0.23"));
+        std::fs::write(tmp.path().join("launcher-settings.json"), r#"{ "version": "Circinus v3.14.15" }"#).unwrap();
+        assert_eq!(installed_version(tmp.path()).as_deref(), Some("3.14.15"));
+        assert_eq!(installed_version(&tmp.path().join("missing")), None);
     }
 
     #[test]

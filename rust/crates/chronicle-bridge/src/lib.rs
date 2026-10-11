@@ -14,18 +14,22 @@
 
 pub mod config;
 pub mod design;
+pub mod hoi4_import;
 pub mod hoi4_save;
 pub mod sim;
 pub mod state;
+pub mod stellaris_designs;
 pub mod stellaris_mod;
 pub mod stellaris_save;
 
 pub use config::{BridgeConfig, Vocabulary};
 pub use design::{Decision, EmpireDesign, Reason, design_empire, validate_design};
+pub use hoi4_import::{Hoi4ImportError, Hoi4ImportReport, import_hoi4};
 pub use hoi4_save::{Hoi4Civilization, Hoi4Error, Hoi4Mapping, Hoi4Summary, Hoi4World, read_hoi4, read_hoi4_bytes, to_civilization};
 pub use sim::{BridgeEvent, BridgeRun, simulate, simulate_from};
 pub use state::{CivilizationState, INDICATORS, Ideology, StateError, presets};
-pub use stellaris_mod::{ModError, ModOptions, ModResult, mod_root_from_save_dir, suggested_name, write_mod};
+pub use stellaris_designs::{DesignsError, DesignsResult, stellaris_docs_from_save_dir, write_user_design};
+pub use stellaris_mod::{ModError, ModOptions, ModResult, installed_version, mod_root_from_save_dir, suggested_name, write_mod};
 pub use stellaris_save::{DesignComparison, ReadError, StellarisEmpire, compare, read_empire, read_empire_from_text};
 
 use serde::Serialize;

@@ -21,7 +21,7 @@ pub mod migrate;
 pub mod periods;
 pub mod world;
 
-pub use periods::{Aspect, OwnershipPeriod, Period, PeriodError};
+pub use periods::{Aspect, OwnerChange, OwnershipPeriod, Period, PeriodError};
 pub use world::{NamedTable, SemanticInput};
 
 /// Campaign folder layout (originals are read-only copies; nothing is ever written to user saves).
@@ -321,6 +321,9 @@ pub struct EventRow {
     pub importance: u8,
     pub origin: String,
     pub evidence: String,
+    /// Current names of the actor / target countries, when they are countries.
+    pub actor_name: Option<String>,
+    pub target_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -544,14 +547,23 @@ impl CampaignDb {
 
     /// Chronological journal; `min_importance` filters minor events.
     pub fn events(&self, min_importance: u8, limit: u32) -> Result<Vec<EventRow>> {
+        self.events_for(min_importance, None, limit)
+    }
+
+    /// Journal rows, optionally only one game's ("ck3", "hoi4", "modern_bridge", "stellaris").
+    pub fn events_for(&self, min_importance: u8, game: Option<&str>, limit: u32) -> Result<Vec<EventRow>> {
         let mut st = self.conn.prepare(
-            "SELECT event_id, year, month, day, date_precision, game, event_type, actor_entity_id,
-                    target_entity_id, payload, importance, origin, evidence, date_to_year, date_to_month, date_to_day
-             FROM events WHERE importance >= ?1
-             ORDER BY date_key, event_id
-             LIMIT ?2",
+            "SELECT e.event_id, e.year, e.month, e.day, e.date_precision, e.game, e.event_type, e.actor_entity_id,
+                    e.target_entity_id, e.payload, e.importance, e.origin, e.evidence, e.date_to_year, e.date_to_month,
+                    e.date_to_day, ca.current_name, ct.current_name
+             FROM events e
+             LEFT JOIN countries ca ON ca.entity_id = e.actor_entity_id
+             LEFT JOIN countries ct ON ct.entity_id = e.target_entity_id
+             WHERE e.importance >= ?1 AND (?2 IS NULL OR e.game = ?2)
+             ORDER BY e.date_key, e.event_id
+             LIMIT ?3",
         )?;
-        let rows = st.query_map(params![min_importance, limit], |r| {
+        let rows = st.query_map(params![min_importance, game, limit], |r| {
             let payload: String = r.get(9)?;
             Ok(EventRow {
                 event_id: r.get(0)?,
@@ -568,6 +580,8 @@ impl CampaignDb {
                 importance: r.get(10)?,
                 origin: r.get(11)?,
                 evidence: r.get(12)?,
+                actor_name: r.get(16)?,
+                target_name: r.get(17)?,
             })
         })?;
         Ok(rows.collect::<std::result::Result<_, _>>()?)

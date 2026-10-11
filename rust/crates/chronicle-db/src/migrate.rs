@@ -29,6 +29,7 @@ pub const CAMPAIGN_MIGRATIONS: &[Migration] = &[
     m(2, include_str!("../migrations/campaign_0002.sql")),
     rebuild(3, include_str!("../migrations/campaign_0003.sql")),
     m(4, include_str!("../migrations/campaign_0004.sql")),
+    m(5, include_str!("../migrations/campaign_0005.sql")),
 ];
 
 pub fn latest(migrations: &[Migration]) -> u32 {
@@ -93,7 +94,7 @@ mod tests {
                  VALUES ('c', 1092, 4, NULL, 'exact', 'ck3', 'civil_war', 'save');",
         )
         .unwrap();
-        assert_eq!(migrate(&mut conn, CAMPAIGN_MIGRATIONS).unwrap(), vec![2, 3, 4]);
+        assert_eq!(migrate(&mut conn, CAMPAIGN_MIGRATIONS).unwrap(), vec![2, 3, 4, 5]);
         assert_eq!(migrate(&mut conn, CAMPAIGN_MIGRATIONS).unwrap(), Vec::<u32>::new(), "idempotent");
 
         let (precision, origin, evidence): (String, String, String) = conn

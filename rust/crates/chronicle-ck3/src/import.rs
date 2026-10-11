@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 use chronicle_core::{ChronicleId, ConfidenceComponents, EntityKind, EventOrigin, PartialDate};
-use chronicle_db::{Aspect, BackupKind, CampaignDb, DbError, NamedTable, NewEvent, PeriodError, SemanticInput};
+use chronicle_db::{Aspect, BackupKind, CampaignDb, DbError, NamedTable, NewEvent, OwnerChange, PeriodError, SemanticInput};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -76,6 +76,8 @@ pub struct ImportReport {
     pub faiths: usize,
     pub new_entities: usize,
     pub ownership_changes: usize,
+    /// Counties whose owner differs from the previous imported save (journal: inferred events).
+    pub territories_changed: usize,
     pub events_added: usize,
     pub semantic_values: usize,
     pub player_realm: Option<String>,
@@ -168,6 +170,7 @@ fn import_body(
     let bookmark = world.bookmark.unwrap_or(PartialDate::ymd(867, 1, 1));
     let policy = db.summary()?.settings.confidence;
 
+    let previous_snapshot = db.previous_snapshot_date(GAME, date)?;
     let save_id = db.record_save_file(GAME, &save.display().to_string(), &rep.stored_copy, sha, Some(date), world.version.as_deref())?;
     let kind = if db.snapshot_count(GAME)? == 0 { "initial" } else { "periodic" };
     rep.snapshot_id = db.record_snapshot(GAME, date, kind, &rep.stored_copy, sha, Some(save_id))?;
@@ -248,8 +251,31 @@ fn import_body(
             let tid = id_for(&mut *db, format!("county:{ck}"), EntityKind::Territory)?;
             let tname = title_by_key.get(ck.as_str()).map(|t| t.name.as_str()).unwrap_or("");
             db.upsert_territory(&tid, if tname.is_empty() { ck.as_str() } else { tname })?;
-            if period_warning(db.set_owner(&tid, Some(&country), date, GAME, "save"), "ownership", &mut rep.warnings)? {
-                rep.ownership_changes += 1;
+            match db.set_owner_tracked(&tid, Some(&country), date, GAME, "save") {
+                Ok(change) => {
+                    rep.ownership_changes += 1;
+                    if let OwnerChange::Changed { previous } = change {
+                        rep.territories_changed += 1;
+                        let prev_id = previous.and_then(|p| p.parse::<ChronicleId>().ok());
+                        let from = previous_snapshot.unwrap_or(date);
+                        let key = format!("ck3:owner:{ck}:{date}");
+                        if !db.event_exists("territory_changed_owner", from, &key)? {
+                            db.add_event(&NewEvent {
+                                date_to: (from < date).then_some(date),
+                                game_version: world.version.as_deref(),
+                                actor: Some(&country),
+                                target: prev_id.as_ref(),
+                                payload: serde_json::json!({ "key": key, "territory": tname, "county": ck }),
+                                importance: 2,
+                                ..NewEvent::simple(from, GAME, "territory_changed_owner", EventOrigin::SnapshotDiff)
+                            })?;
+                            rep.events_added += 1;
+                        }
+                    }
+                }
+                Err(e) => {
+                    period_warning(Err(e), "ownership", &mut rep.warnings)?;
+                }
             }
             rep.counties += 1;
         }
@@ -454,6 +480,24 @@ mod tests {
         assert_eq!(second.ownership_changes, 3, "same owners: no-op periods");
         let failed: Vec<_> = chronicle_db::dev::self_test(&db).unwrap().into_iter().filter(|c| !c.ok).collect();
         assert!(failed.is_empty(), "{failed:?}");
+    }
+
+    #[test]
+    fn second_save_adds_inferred_border_changes() {
+        let (_tmp, mut db, save, world) = setup();
+        import_world(&mut db, &world, &save).unwrap();
+        let mut later = world.clone();
+        later.date = Some(PartialDate::ymd(924, 1, 1));
+        let moved = later.realms[1].counties.pop().unwrap(); // c_c joins the player's realm
+        later.realms[0].counties.push(moved);
+        let save2 = save.with_file_name("later.ck3");
+        std::fs::write(&save2, b"later save bytes").unwrap();
+        let r = import_world(&mut db, &later, &save2).unwrap();
+        assert_eq!(r.territories_changed, 1);
+        let ev = db.events(0, 1000).unwrap();
+        let change = ev.iter().find(|e| e.event_type == "territory_changed_owner").unwrap();
+        assert_eq!((change.evidence.as_str(), change.date_precision.as_str()), ("inferred", "range"));
+        assert_eq!((change.date, change.date_to), (PartialDate::ymd(923, 4, 28), Some(PartialDate::ymd(924, 1, 1))));
     }
 
     #[test]

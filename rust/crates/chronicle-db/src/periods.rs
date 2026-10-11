@@ -123,6 +123,17 @@ fn period_row(r: &Row<'_>) -> rusqlite::Result<Period> {
     })
 }
 
+/// What `set_owner_tracked` did — importers turn `Changed` into journal events.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OwnerChange {
+    /// Same owner as before: nothing written.
+    Unchanged,
+    /// First known owner of this territory.
+    First,
+    /// The owner changed; `previous` is the old owner (None = was unowned).
+    Changed { previous: Option<String> },
+}
+
 impl CampaignDb {
     /// Change the owner of a territory from `date`. Closes the open period, opens a new one.
     /// Setting the same owner again is a no-op.
@@ -134,6 +145,18 @@ impl CampaignDb {
         game: &str,
         source: &str,
     ) -> Result<()> {
+        self.set_owner_tracked(territory, owner, date, game, source).map(|_| ())
+    }
+
+    /// Same as `set_owner`, reporting whether the owner actually changed.
+    pub fn set_owner_tracked(
+        &mut self,
+        territory: &ChronicleId,
+        owner: Option<&ChronicleId>,
+        date: PartialDate,
+        game: &str,
+        source: &str,
+    ) -> Result<OwnerChange> {
         let tx = self.conn_mut().savepoint()?; // nests inside bulk imports
         let open: Option<OpenOwnership> = tx
             .query_row(
@@ -143,19 +166,23 @@ impl CampaignDb {
                 |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
             )
             .optional()?;
-        if let Some((id, current_owner, y, m, d)) = open {
-            let current_from = PartialDate { year: y, month: m, day: d };
+        if let Some((id, current_owner, y, m, d)) = &open {
+            let current_from = PartialDate { year: *y, month: *m, day: *d };
             if date < current_from {
                 return Err(PeriodError::Backwards { subject: territory.to_string(), date, current_from }.into());
             }
             if current_owner.as_deref() == owner.map(ChronicleId::as_str) {
-                return Ok(());
+                return Ok(OwnerChange::Unchanged);
             }
             tx.execute(
                 "UPDATE territory_ownership SET to_year = ?1, to_month = ?2, to_day = ?3, to_key = ?4 WHERE id = ?5",
                 params![date.year, date.month, date.day, date.sort_key(), id],
             )?;
         }
+        let change = match &open {
+            None => OwnerChange::First,
+            Some((_, previous, ..)) => OwnerChange::Changed { previous: previous.clone() },
+        };
         tx.execute(
             "INSERT INTO territory_ownership(territory_id, owner_id, from_year, from_month, from_day, from_key, game, source)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
@@ -175,7 +202,7 @@ impl CampaignDb {
             params![owner.map(ChronicleId::as_str), territory.as_str()],
         )?;
         tx.commit()?;
-        Ok(())
+        Ok(change)
     }
 
     /// Owner of a territory at a date (None = unknown or unowned at that date).

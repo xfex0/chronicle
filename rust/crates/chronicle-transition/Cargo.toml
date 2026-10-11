@@ -1,0 +1,22 @@
+[package]
+name = "chronicle-transition"
+description = "Era transition: final save → campaign database → next game's world, step by step"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+paradox-parser.workspace = true
+chronicle-core.workspace = true
+chronicle-db.workspace = true
+chronicle-steam.workspace = true
+chronicle-ck3.workspace = true
+chronicle-bridge.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

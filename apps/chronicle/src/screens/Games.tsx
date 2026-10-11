@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { GameScene } from "../components/GameScene";
+import { Icon } from "../components/Icons";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
 import type { GameDef, InstallationRow, SaveFileInfo, SteamInstall } from "../api/types";
@@ -80,6 +82,16 @@ function GameCard({ game, row, app, run }: {
 
   async function importSave(path: string) {
     setImporting(path);
+    if (game.key === "hoi4") {
+      const r = await run(() => backend.importHoi4(path));
+      setImporting(null);
+      if (r) {
+        app.setCampaign(r.campaign);
+        app.notify(t("imp.doneHoi4", { countries: r.report.countries, states: r.report.states, wars: r.report.wars,
+          events: r.report.events_added, date: r.report.date ?? "?" }));
+      }
+      return;
+    }
     const r = await run(() => backend.importCk3(path));
     setImporting(null);
     if (r) {
@@ -110,7 +122,8 @@ function GameCard({ game, row, app, run }: {
   }
 
   return (
-    <article className={installed ? "card" : "card is-missing"}>
+    <article className={installed ? "card" : "card is-missing"} data-game={game.key}>
+      <div className="card-banner"><GameScene game={game.key} seed={game.key.length * 13} variant="thumb" /><Icon name={game.key} size={26} /></div>
       <header className="card-head">
         <h2>{game.display_name}</h2>
         <span className={installed ? "badge is-ok" : "badge is-off"}>{installed ? t("games.installed") : t("games.missing")}</span>
@@ -138,7 +151,7 @@ function GameCard({ game, row, app, run }: {
                 <li key={s.path}>
                   <span className="save-name" title={s.path}>{s.name}</span>
                   <span className="muted">{when(s.modified)}, {(s.size / 1e6).toFixed(1)} MB</span>
-                  {game.key === "ck3" && (
+                  {(game.key === "ck3" || game.key === "hoi4") && (
                     <button onClick={() => importSave(s.path)} disabled={!app.boot.current_campaign || importing !== null}>
                       {importing === s.path ? t("imp.running") : t("saves.import")}
                     </button>
@@ -147,7 +160,7 @@ function GameCard({ game, row, app, run }: {
               ))}
             </ul>
           )}
-          {game.key === "ck3" && !app.boot.current_campaign && saves.length > 0 && <p className="hint">{t("saves.needCampaign")}</p>}
+          {(game.key === "ck3" || game.key === "hoi4") && !app.boot.current_campaign && saves.length > 0 && <p className="hint">{t("saves.needCampaign")}</p>}
         </div>
       )}
       <div className="actions compact">

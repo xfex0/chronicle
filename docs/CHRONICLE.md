@@ -218,6 +218,17 @@ screen **Bridge → Compare with my Stellaris save**, CLI `chronicle-dev stellar
 and compares it with the suggested design. 22 vocabulary keys are now marked verified.
 Details: `games/stellaris/SAVE_FORMAT.md`.
 
+### HoI4 import into the campaign ✅
+
+`chronicle-bridge::import_hoi4` (Campaign → Import a save → HoI4, or the Import button next to
+a save on the HoI4 game card): countries that own states (keyed by tag), states as
+territories with ownership, ruling party as government period, industrial capacity /
+stability / war support as semantic values, every war with its start date and one
+"state of the world" snapshot event in the journal; current game becomes HoI4. Same safety
+as CK3: backup, read-only copy, one transaction, idempotent re-import. HoI4 saves carry no
+long history, so the HoI4 part of the timeline grows with every imported save. The timeline
+can be filtered by game and shows readable entries (titles, wars, snapshots, bridge events).
+
 ### HoI4 saves — verified on a real save ✅
 
 HoI4 1.19.3 default saves start with `HOI4bin` and are token-encoded binary; with
@@ -227,6 +238,51 @@ game version, and asks for a text save (`settings.txt → save_as_binary=no`). T
 for the Bridge will read text saves. Container detection was hardened at the same time: a
 ZIP signature is only trusted near the start of a file and after a text prefix.
 Details: `games/hoi4/SAVE_FORMAT.md`.
+
+## 12a. Era transition — the centre of a campaign ✅ (crate `chronicle-transition`)
+
+```text
+final save of the current game ──► Chronicle database ──► next game's world
+```
+
+Screen **Era transition**. Fifteen steps in two phases; nothing is generated before the
+player confirms the preview:
+
+| # | Step | HoI4 → Stellaris | CK3 → EU5 |
+|---|---|---|---|
+| 1 | find the newest readable save | ✅ | ✅ |
+| 2 | check date (forward-only, transition date) and compatibility | ✅ | ✅ |
+| 3 | backup of `campaign.db` (transition backups are never pruned) | ✅ | ✅ |
+| 4 | import the final world (save copied read-only) | ✅ | ✅ |
+| 5 | final snapshot of the era | ✅ | ✅ |
+| 6 | history vs the previous save: owner changes → inferred journal events | ✅ | ✅ |
+| 7 | semantic values (and how many wait for review) | ✅ | ✅ |
+| 8 | GeoCore map transfer | skipped (one planet) | blocked: GeoCore not built |
+| 9 | coefficients | bridge + HoI4 mapping | blocked: EU5 adapter research |
+| 10 | build the next world | Modern Era Bridge | blocked |
+| 11 | preview: states before/after, merged/split/vanished/created, low confidence, GeoCore warnings, critical errors | ✅ | partial (source only) |
+| 12 | generate | Earth's empire added to the player's own Stellaris empire designs (no mod) | — |
+| 13 | validate the generated files | ✅ | — |
+| 14 | close the era: journal (bridge history + `era_transition`), `eras` table, conversion → generated | ✅ | — |
+| 15 | the next game becomes the current era | ✅ | — |
+
+Each step is reported live (Tauri event `transition-step`). Every run is recorded in
+`conversions` (+ `conversion_warnings`) for reproducibility. Modes: **manual**; **recommended**
+(Chronicle checks the newest save once a minute and says when the transition date is
+reached); **automatic** (when the newest save has been stable for a minute after the date,
+Chronicle runs steps 1–11 and asks you to review — generation always waits for you).
+The old era is never deleted: its save copy, history and data stay; it is marked completed.
+
+## 12b. Interface: "night archive" with a theme per game
+
+Dark reading-room palette by default (light theme in the sidebar), one accent and one sky per
+game set by `[data-game]`: Imperator bronze, CK3 gold, EU5 sea-teal, Victoria 3 brass, HoI4
+olive, Bridge cyan, Stellaris violet. Scenes are drawn procedurally by Chronicle
+(`components/GameScene.tsx`: temples, castles, harbour, factories, ruined city, skyline,
+ringed planet) and icons are Chronicle's own (`components/Icons.tsx`) — no game artwork or
+logos. Timeline: per-game banner with game tabs and "go to date", era slider with event
+density and a two-handle range, category chips with counts and search, a vertical event list
+(paged, `content-visibility`) and a detail panel with details / related events / provenance.
 
 ## 13. Developer mode
 
@@ -245,7 +301,8 @@ See `DEVELOPER_MODE.md`: demo world, self-test, time queries, read-only SQL cons
 | MVP 4 | EU5 target mod prototype | |
 | MVP 5 | CK3 1337 → EU5 1337 | |
 | Bridge | Modern Era Bridge + Stellaris empire design from manual input | **prototype done** |
-| later | HoI4 save adapter → Bridge input; Stellaris mod generation; Save Watcher → **History Collector**; automatic transitions; Victoria 3; Imperator | |
+| Transition | Era transition pipeline (15 steps, 3 modes); HoI4 → Stellaris end to end; CK3 → EU5 up to the preview | **done** |
+| later | GeoCore + EU5 adapter (unblocks CK3 → EU5), EU5/Vic3 importers, Save Watcher → **History Collector**, Victoria 3, Imperator | |
 
 Biggest risks: reverse engineering each game's formats, GeoCore, and keeping adapters alive
 across patches — answered by golden tests on real saves of every supported version.

@@ -16,7 +16,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use chronicle_core::{ChronicleId, ConfidenceComponents, EntityKind, EventOrigin, PartialDate};
-use chronicle_db::{Aspect, BackupKind, CampaignDb, DbError, NewEvent, PeriodError, SemanticInput};
+use chronicle_db::{Aspect, BackupKind, CampaignDb, DbError, NewEvent, OwnerChange, PeriodError, SemanticInput};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -48,6 +48,8 @@ pub struct Hoi4ImportReport {
     pub wars: usize,
     pub events_added: usize,
     pub ownership_changes: usize,
+    /// States whose owner differs from the previous imported save (journal: inferred events).
+    pub territories_changed: usize,
     pub semantic_values: usize,
     pub new_entities: usize,
     pub stored_copy: String,
@@ -138,6 +140,7 @@ fn import_body(
     rep: &mut Hoi4ImportReport,
 ) -> Result<(), Hoi4ImportError> {
     let policy = db.summary()?.settings.confidence;
+    let previous_snapshot = db.previous_snapshot_date(GAME, date)?;
     let save_id = db.record_save_file(GAME, &save.display().to_string(), &rep.stored_copy, sha, Some(date), rep.game_version.as_deref())?;
     let kind = if db.snapshot_count(GAME)? == 0 { "initial" } else { "periodic" };
     db.record_snapshot(GAME, date, kind, &rep.stored_copy, sha, Some(save_id))?;
@@ -194,8 +197,31 @@ fn import_body(
         let Some(owner_id) = country_ids.get(owner) else { continue };
         let tid = id_for(&mut *db, format!("state:{sid}"), EntityKind::Territory)?;
         db.upsert_territory(&tid, &format!("State {sid}"))?;
-        if period_ok(db.set_owner(&tid, Some(owner_id), date, GAME, "save"), "ownership", &mut rep.warnings)? {
-            rep.ownership_changes += 1;
+        match db.set_owner_tracked(&tid, Some(owner_id), date, GAME, "save") {
+            Ok(change) => {
+                rep.ownership_changes += 1;
+                if let OwnerChange::Changed { previous } = change {
+                    rep.territories_changed += 1;
+                    let prev_id = previous.and_then(|p| p.parse::<ChronicleId>().ok());
+                    let from = previous_snapshot.unwrap_or(date);
+                    let key = format!("hoi4:owner:{sid}:{date}");
+                    if !db.event_exists("territory_changed_owner", from, &key)? {
+                        db.add_event(&NewEvent {
+                            date_to: (from < date).then_some(date),
+                            game_version: rep.game_version.as_deref(),
+                            actor: Some(owner_id),
+                            target: prev_id.as_ref(),
+                            payload: serde_json::json!({ "key": key, "territory": format!("State {sid}"), "new_owner": owner }),
+                            importance: 2,
+                            ..NewEvent::simple(from, GAME, "territory_changed_owner", EventOrigin::SnapshotDiff)
+                        })?;
+                        rep.events_added += 1;
+                    }
+                }
+            }
+            Err(e) => {
+                period_ok(Err(e), "ownership", &mut rep.warnings)?;
+            }
         }
         rep.states += 1;
     }

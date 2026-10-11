@@ -1,6 +1,6 @@
 // Browser-only demo data (npm run dev). Never shipped behaviour: the desktop build uses Rust.
 
-import type { Bootstrap, BridgeResult, Check, CivilizationState, DemoResult, EntityLabel, EventRow, Hoi4Civilization, OwnershipPeriod, Period, QueryResult, StellarisCompare, StellarisVocabulary } from "./types";
+import type { Bootstrap, BridgeResult, TransitionPlan, TransitionStep, Check, CivilizationState, DemoResult, EntityLabel, EventRow, Hoi4Civilization, OwnershipPeriod, Period, QueryResult, StellarisCompare, StellarisVocabulary } from "./types";
 
 const registry: Bootstrap["registry"] = {
   version: 1,
@@ -46,9 +46,9 @@ export function mockBootstrap(): Bootstrap {
 
 export function mockEvents(minImportance: number): EventRow[] {
   const all: EventRow[] = [
-    { event_id: 1, date: "867.1.1", date_to: null, date_precision: "day", game: "ck3", event_type: "campaign_started", actor_entity_id: null, target_entity_id: null, payload: { name: "My World" }, importance: 5, origin: "converter", evidence: "observed" },
-    { event_id: 2, date: "1092.4", date_to: null, date_precision: "month", game: "ck3", event_type: "civil_war", actor_entity_id: "chronicle_country_000001", target_entity_id: null, payload: {}, importance: 3, origin: "save", evidence: "observed" },
-    { event_id: 3, date: "1200", date_to: "1205", date_precision: "range", game: "ck3", event_type: "capital_changed", actor_entity_id: "chronicle_country_000002", target_entity_id: null, payload: {}, importance: 3, origin: "snapshot_diff", evidence: "inferred" },
+    { event_id: 1, date: "867.1.1", date_to: null, date_precision: "day", game: "ck3", event_type: "campaign_started", actor_entity_id: null, target_entity_id: null, payload: { name: "My World" }, importance: 5, origin: "converter", evidence: "observed", actor_name: null, target_name: null },
+    { event_id: 2, date: "1092.4", date_to: null, date_precision: "month", game: "ck3", event_type: "civil_war", actor_entity_id: "chronicle_country_000001", target_entity_id: null, payload: {}, importance: 3, origin: "save", evidence: "observed", actor_name: "Ruthenia", target_name: null },
+    { event_id: 3, date: "1200", date_to: "1205", date_precision: "range", game: "ck3", event_type: "capital_changed", actor_entity_id: "chronicle_country_000002", target_entity_id: null, payload: {}, importance: 3, origin: "snapshot_diff", evidence: "inferred", actor_name: "Empire", target_name: null },
   ];
   return all.filter((e) => e.importance >= minImportance);
 }
@@ -148,3 +148,27 @@ export const mockBridge = {
     },
   }),
 };
+
+const STEP_IDS = ["find_save", "check_save", "backup", "import_final", "final_snapshot", "diff_history", "semantics", "geo_core",
+  "coefficients", "build_world", "preview", "generate", "validate", "close_era", "next_era"] as const;
+
+export function mockTransition(finished: boolean): TransitionPlan {
+  const steps: TransitionStep[] = STEP_IDS.map((id, i) => ({
+    id,
+    status: id === "geo_core" ? "skipped" : id === "check_save" ? "warning" : i <= 10 || finished ? "done" : "pending",
+    counts: id === "import_final" ? { countries: 87, territories: 1081, wars: 18 } : id === "diff_history" ? { territories_changed: 12, events_added: 31 } : {},
+    note: id === "check_save" ? "transition_date_not_reached" : id === "geo_core" ? "one_planet" : null,
+  }));
+  return {
+    route: { from: "hoi4", to: "stellaris", via: "modern_bridge", kind: "hoi4_to_stellaris" },
+    save: "C:/saves/autosave.hoi4", save_date: "1940.1.3", transition_date: "1948.1.1", steps,
+    preview: {
+      source_countries: 87, target_countries: 1, merged: 87, split: 0, vanished: 0, created: 1, low_confidence: 3,
+      geocore_warnings: 0, critical_errors: 0, notes: ["stellaris_keys_partly_unverified"],
+      design: mockBridge.result(mockBridge.presets()[0][1], 1).design, start_year: 1940, bridge_events: 7,
+    },
+    can_generate: true, blocked_reason: null, conversion_id: 1, snapshot_id: 3,
+    generated: finished ? { file: "C:/Users/me/Documents/Paradox Interactive/Stellaris/user_empire_designs_v3.4.txt", backup: null, empire_name: "Terran Federation", replaced: false, warnings: [] } : null,
+    finished, bridge: { seed: 45819283, start_year: null, empire_name: "Terran Federation", adjective: "Terran" },
+  };
+}

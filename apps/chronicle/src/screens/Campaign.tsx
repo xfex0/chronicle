@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { AppData } from "../App";
 import { backend, errorCode } from "../api/backend";
-import type { CampaignSummary, Ck3ImportReport, SaveInfo } from "../api/types";
+import type { CampaignSummary, Ck3ImportReport, Hoi4ImportReport, SaveInfo } from "../api/types";
 import { SettingsEditor, type EditableSettings } from "../components/SettingsEditor";
 import { errorText, formatDate, useI18n, type Key } from "../i18n";
 
@@ -121,6 +121,7 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
   const [valid, setValid] = useState(true);
   const [inspect, setInspect] = useState<SaveInfo | null>(null);
   const [report, setReport] = useState<Ck3ImportReport | null>(null);
+  const [hoi4Report, setHoi4Report] = useState<Hoi4ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
   const [seconds, setSeconds] = useState(0);
   useEffect(() => {
@@ -129,6 +130,21 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
     const timer = window.setInterval(() => setSeconds((s) => s + 1), 1000);
     return () => window.clearInterval(timer);
   }, [importing]);
+
+  async function importHoi4() {
+    const p = await backend.pickFile();
+    if (!p) return;
+    setImporting(true);
+    try {
+      const r = await backend.importHoi4(p);
+      setHoi4Report(r.report);
+      app.setCampaign(r.campaign);
+    } catch (e) {
+      app.notify(errorText(t, errorCode(e)), "error");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function importCk3() {
     const p = await backend.pickFile();
@@ -199,10 +215,11 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
         <button className="primary" onClick={save} disabled={!valid}>{t("camp.save")}</button>
       </div>
 
-      <h2>{t("imp.title")}</h2>
+      <h2>{t("imp.titleAll")}</h2>
       <p className="hint">{t("imp.hint")}</p>
       <div className="actions">
         <button className="primary" onClick={importCk3} disabled={importing}>{importing ? t("imp.running") : t("imp.pick")}</button>
+        <button onClick={importHoi4} disabled={importing}>{t("imp.pickHoi4")}</button>
         {importing && <span className="hint">{t("imp.elapsed", { s: seconds })}</span>}
       </div>
       {report && (
@@ -212,6 +229,14 @@ function Overview({ app, campaign, onNew }: { app: AppData; campaign: CampaignSu
           <p className="muted">{t("imp.details", { cultures: report.cultures, faiths: report.faiths, dynasties: report.dynasties, values: report.semantic_values, version: report.game_version ?? "?" })}</p>
           {!report.version_verified && <p className="field-error">{t("imp.unverified")}</p>}
           {report.warnings.length > 0 && <ul className="reasons">{report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
+        </div>
+      )}
+
+      {hoi4Report && (
+        <div className="notice">
+          <p>{t("imp.doneHoi4", { countries: hoi4Report.countries, states: hoi4Report.states, wars: hoi4Report.wars, events: hoi4Report.events_added, date: formatDate(lang, hoi4Report.date) })}</p>
+          {!hoi4Report.version_verified && <p className="field-error">{t("imp.unverified")}</p>}
+          {hoi4Report.warnings.length > 0 && <ul className="reasons">{hoi4Report.warnings.map((w) => <li key={w}>{w}</li>)}</ul>}
         </div>
       )}
 

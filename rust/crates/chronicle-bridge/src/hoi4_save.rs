@@ -61,6 +61,14 @@ pub struct Hoi4Faction {
     pub members: Vec<String>,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Hoi4War {
+    pub first: String,
+    pub second: String,
+    /// e.g. "1937.7.7.12" (date + hour)
+    pub start: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Hoi4World {
     pub version: Option<String>,
@@ -71,6 +79,10 @@ pub struct Hoi4World {
     pub factories: BTreeMap<String, Factories>,
     pub factions: Vec<Hoi4Faction>,
     pub wars: BTreeSet<(String, String)>,
+    /// Each war relation with its start date (wars are stored on one side only).
+    pub war_details: Vec<Hoi4War>,
+    /// (state id, owner tag)
+    pub states: Vec<(String, String)>,
 }
 
 fn inner<'a>(src: &'a [u8], span: &SectionSpan) -> &'a [u8] {
@@ -125,6 +137,7 @@ pub fn read_hoi4_bytes(bytes: &[u8]) -> Result<Hoi4World, Hoi4Error> {
     let cidx = TopLevelIndex::build(countries_src)?;
     let mut countries = Vec::new();
     let mut wars = BTreeSet::new();
+    let mut war_details = Vec::new();
     for cspan in cidx.spans.iter().filter(|s| s.is_block) {
         let blk = inner(countries_src, cspan);
         let sidx = TopLevelIndex::build(blk)?;
@@ -160,7 +173,9 @@ pub fn read_hoi4_bytes(bytes: &[u8]) -> Result<Hoi4World, Hoi4Error> {
                 for (_, _, v) in rel.pairs() {
                     if let Some(w) = container(Some(v)).and_then(|r| container(r.get("war_relation"))) {
                         if let (Some(a), Some(b)) = (text(w.get("first")), text(w.get("second"))) {
-                            wars.insert((a, b));
+                            if wars.insert((a.clone(), b.clone())) {
+                                war_details.push(Hoi4War { first: a, second: b, start: text(w.get("start_date")) });
+                            }
                         }
                     }
                 }
@@ -171,11 +186,13 @@ pub fn read_hoi4_bytes(bytes: &[u8]) -> Result<Hoi4World, Hoi4Error> {
 
     // states → factories by owner
     let mut factories: BTreeMap<String, Factories> = BTreeMap::new();
+    let mut state_owners = Vec::new();
     if let Some(span) = idx.find("states").next() {
         let states = parse_section(payload, span, &opts)?;
-        for (_, _, v) in states.root.pairs() {
+        for (sid, _, v) in states.root.pairs() {
             let Some(st) = v.as_container() else { continue };
             let Some(owner) = text(st.get("owner")) else { continue };
+            state_owners.push((sid.as_str().into_owned(), owner.clone()));
             let f = factories.entry(owner).or_default();
             f.states += 1;
             if let Some(b) = container(st.get("buildings")) {
@@ -207,6 +224,8 @@ pub fn read_hoi4_bytes(bytes: &[u8]) -> Result<Hoi4World, Hoi4Error> {
         factories,
         factions,
         wars,
+        war_details,
+        states: state_owners,
     })
 }
 
@@ -436,6 +455,9 @@ mod tests {
         assert_eq!(w.factories["GER"], Factories { civilian: 6, military: 4, dockyards: 0, states: 1 });
         assert_eq!(w.factions.len(), 2);
         assert!(w.wars.contains(&("SOV".to_string(), "CHI".to_string())));
+        assert_eq!(w.war_details[0].start.as_deref(), Some("1939.8.14.12"));
+        assert_eq!(w.states.len(), 5);
+        assert_eq!(w.states[0], ("1".to_string(), "GER".to_string()));
     }
 
     /// Same numbers as the research prototype (Python) on the same fixture.

@@ -112,6 +112,8 @@ export interface EventRow {
   importance: number;
   origin: "game" | "save" | "snapshot_diff" | "converter" | "user";
   evidence: "observed" | "inferred";
+  actor_name: string | null;
+  target_name: string | null;
 }
 
 export interface NewCampaignInput {
@@ -238,4 +240,35 @@ export interface Ck3Import { report: Ck3ImportReport; campaign: CampaignSummary 
 export interface SaveFileInfo { path: string; name: string; size: number; modified: number }
 
 export interface ModResult { mod_dir: string; launcher_file: string; files: string[]; template_source: string; warnings: string[] }
-export interface StellarisTransition { result: ModResult; events_added: number | null; campaign: CampaignSummary | null }
+export interface DesignsResult { file: string; backup: string | null; empire_name: string; replaced: boolean; warnings: string[] }
+export interface StellarisTransition { result: DesignsResult; events_added: number | null; campaign: CampaignSummary | null }
+
+export interface Hoi4ImportReport {
+  game_version: string | null; version_verified: boolean; date: string | null; player: string | null;
+  countries: number; states: number; wars: number; events_added: number; ownership_changes: number;
+  semantic_values: number; new_entities: number; stored_copy: string; warnings: string[];
+}
+export interface Hoi4Import { report: Hoi4ImportReport; campaign: CampaignSummary }
+
+// ---- Era transition
+export type StepId = "find_save" | "check_save" | "backup" | "import_final" | "final_snapshot" | "diff_history" | "semantics"
+  | "geo_core" | "coefficients" | "build_world" | "preview" | "generate" | "validate" | "close_era" | "next_era";
+export type StepStatus = "pending" | "done" | "skipped" | "blocked" | "warning" | "failed";
+export interface TransitionStep { id: StepId; status: StepStatus; counts: Record<string, number>; note: string | null }
+export interface TransitionRoute { from: string; to: string; via: string | null; kind: "hoi4_to_stellaris" | "ck3_to_eu5" | "unsupported" }
+export interface BridgeParams { seed: number; start_year: number | null; empire_name: string; adjective: string }
+export interface TransitionPreview {
+  source_countries: number; target_countries: number | null; merged: number; split: number; vanished: number; created: number;
+  low_confidence: number; geocore_warnings: number; critical_errors: number; notes: string[];
+  design: EmpireDesign | null; start_year: number | null; bridge_events: number;
+}
+export interface TransitionPlan {
+  route: TransitionRoute; save: string | null; save_date: string | null; transition_date: string | null;
+  steps: TransitionStep[]; preview: TransitionPreview | null; can_generate: boolean; blocked_reason: string | null;
+  conversion_id: number | null; snapshot_id: number | null; generated: DesignsResult | null; finished: boolean; bridge: BridgeParams;
+}
+export interface Readiness {
+  route: TransitionRoute | null; newest_save: SaveFileInfo | null; save_date: string | null; transition_date: string | null;
+  reached: boolean; support: "full" | "partial" | "none";
+}
+export interface TransitionDone { plan: TransitionPlan; campaign: CampaignSummary }

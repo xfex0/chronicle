@@ -221,8 +221,121 @@ impl CampaignDb {
         Ok(self.conn().last_insert_rowid())
     }
 
+    /// Date of the newest snapshot of `game` strictly before `before` (for "between snapshots" events).
+    pub fn previous_snapshot_date(&self, game: &str, before: PartialDate) -> Result<Option<PartialDate>> {
+        let row: Option<(i32, Option<u8>, Option<u8>)> = self
+            .conn()
+            .query_row(
+                "SELECT year, month, day FROM snapshots
+                 WHERE game = ?1 AND year * 10000 + COALESCE(month, 0) * 100 + COALESCE(day, 0) < ?2
+                 ORDER BY year DESC, COALESCE(month, 0) DESC, COALESCE(day, 0) DESC LIMIT 1",
+                params![game, before.sort_key()],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        Ok(row.map(|(year, month, day)| PartialDate { year, month, day }))
+    }
+
+    /// Mark an era (one game of the chain) planned / active / completed.
+    pub fn set_era(&self, game: &str, status: &str, date: PartialDate, final_snapshot: Option<i64>, conversion: Option<i64>) -> Result<()> {
+        let (start, end) = if status == "completed" { (None, Some(date)) } else { (Some(date), None) };
+        self.conn().execute(
+            "INSERT INTO eras(game, status, started_year, started_month, started_day, completed_year, completed_month,
+                              completed_day, final_snapshot, conversion_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+             ON CONFLICT(game) DO UPDATE SET status = excluded.status,
+                 started_year = COALESCE(eras.started_year, excluded.started_year),
+                 started_month = COALESCE(eras.started_month, excluded.started_month),
+                 started_day = COALESCE(eras.started_day, excluded.started_day),
+                 completed_year = COALESCE(excluded.completed_year, eras.completed_year),
+                 completed_month = COALESCE(excluded.completed_month, eras.completed_month),
+                 completed_day = COALESCE(excluded.completed_day, eras.completed_day),
+                 final_snapshot = COALESCE(excluded.final_snapshot, eras.final_snapshot),
+                 conversion_id = COALESCE(excluded.conversion_id, eras.conversion_id),
+                 updated_at = datetime('now')",
+            params![
+                game,
+                status,
+                start.map(|d| d.year),
+                start.and_then(|d| d.month),
+                start.and_then(|d| d.day),
+                end.map(|d| d.year),
+                end.and_then(|d| d.month),
+                end.and_then(|d| d.day),
+                final_snapshot,
+                conversion
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// (game, status) of every era recorded so far.
+    pub fn eras(&self) -> Result<Vec<(String, String)>> {
+        let mut st = self.conn().prepare("SELECT game, status FROM eras ORDER BY rowid")?;
+        let rows = st.query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?;
+        Ok(rows.collect::<std::result::Result<_, _>>()?)
+    }
+
+    /// Record a conversion run (reproducibility: inputs, versions, seed).
+    #[allow(clippy::too_many_arguments)]
+    pub fn record_conversion(
+        &self,
+        source_game: &str,
+        target_game: &str,
+        source_snapshot: i64,
+        source_checksum: &str,
+        date: PartialDate,
+        adapter_versions: &serde_json::Value,
+        coefficient_profile: &str,
+        seed: u64,
+    ) -> Result<i64> {
+        self.conn().execute(
+            "INSERT INTO conversions(source_game, target_game, source_snapshot, source_checksum, year, month, day,
+                                     converter_version, adapter_versions, rules_version, coefficient_profile, seed, status)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, 'preview')",
+            params![
+                source_game,
+                target_game,
+                source_snapshot,
+                source_checksum,
+                date.year,
+                date.month,
+                date.day,
+                chronicle_core::CHRONICLE_VERSION,
+                serde_json::to_string(adapter_versions)?,
+                "1",
+                coefficient_profile,
+                seed as i64
+            ],
+        )?;
+        Ok(self.conn().last_insert_rowid())
+    }
+
+    pub fn set_conversion_status(&self, id: i64, status: &str) -> Result<()> {
+        self.conn().execute("UPDATE conversions SET status = ?1 WHERE conversion_id = ?2", params![status, id])?;
+        Ok(())
+    }
+
+    pub fn add_conversion_warning(&self, id: i64, severity: &str, entity: Option<&str>, message: &str) -> Result<()> {
+        self.conn().execute(
+            "INSERT INTO conversion_warnings(conversion_id, severity, entity_id, message) VALUES (?1, ?2, ?3, ?4)",
+            params![id, severity, entity, message],
+        )?;
+        Ok(())
+    }
+
     pub fn snapshot_count(&self, game: &str) -> Result<i64> {
         Ok(self.conn().query_row("SELECT COUNT(*) FROM snapshots WHERE game = ?1", [game], |r| r.get(0))?)
+    }
+
+    /// Semantic values dated `date` that wait for the player's review.
+    pub fn pending_review_count(&self, date: PartialDate) -> Result<i64> {
+        Ok(self.conn().query_row(
+            "SELECT COUNT(*) FROM semantic_values WHERE year = ?1 AND COALESCE(month, 0) = ?2 AND COALESCE(day, 0) = ?3
+               AND review_state = 'pending_review'",
+            params![date.year, date.month.unwrap_or(0), date.day.unwrap_or(0)],
+            |r| r.get(0),
+        )?)
     }
 
     /// True if this entity already has `key` on `date` from `source_game` (re-import guard).

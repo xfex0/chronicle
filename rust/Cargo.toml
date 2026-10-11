@@ -17,6 +17,7 @@ chronicle-rng = { path = "crates/chronicle-rng" }
 chronicle-devtools = { path = "crates/chronicle-devtools" }
 chronicle-bridge = { path = "crates/chronicle-bridge" }
 chronicle-ck3 = { path = "crates/chronicle-ck3" }
+chronicle-transition = { path = "crates/chronicle-transition" }
 geocore = { path = "crates/geocore" }
 
 serde = { version = "1", features = ["derive"] }

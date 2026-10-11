@@ -15,7 +15,7 @@ use chronicle_steam::{detect_all, find_steam, verify_install_dir, SteamInstall};
 use paradox_parser::container::{ContainerKind, Encoding, TextEncoding};
 use paradox_parser::{detect, sniff_version, source, TopLevelIndex};
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_opener::OpenerExt;
 
 struct AppState {
@@ -23,6 +23,8 @@ struct AppState {
     registry: GameRegistry,
     campaign: Mutex<Option<CampaignDb>>,
     steam: Mutex<Option<SteamInstall>>,
+    /// Era transition waiting for the player's confirmation (steps 1–11 done).
+    transition: Mutex<Option<chronicle_transition::TransitionPlan>>,
 }
 
 type CmdResult<T> = Result<T, String>;
@@ -255,9 +257,9 @@ fn update_campaign_settings(state: State<'_, AppState>, settings: CampaignSettin
 }
 
 #[tauri::command]
-fn campaign_events(state: State<'_, AppState>, min_importance: u8) -> CmdResult<Vec<EventRow>> {
+fn campaign_events(state: State<'_, AppState>, min_importance: u8, game: Option<String>) -> CmdResult<Vec<EventRow>> {
     let guard = relock(&state.campaign);
-    guard.as_ref().ok_or("no_campaign")?.events(min_importance, 5000).map_err(err)
+    guard.as_ref().ok_or("no_campaign")?.events_for(min_importance, game.as_deref(), 5000).map_err(err)
 }
 
 #[tauri::command]
@@ -437,21 +439,13 @@ fn bridge_commit(
 
 #[derive(Serialize)]
 struct StellarisTransition {
-    result: chronicle_bridge::ModResult,
+    result: chronicle_bridge::DesignsResult,
     events_added: Option<usize>,
     campaign: Option<CampaignSummary>,
 }
 
-/// Stellaris version from the newest save's `meta` (e.g. "3.14.15"), if there is one.
-fn stellaris_version(save_dir: &std::path::Path, exts: &[String]) -> Option<String> {
-    let newest = chronicle_steam::list_save_files(save_dir, exts, 1).into_iter().next()?;
-    let bytes = std::fs::read(&newest.path).ok()?;
-    let meta = paradox_parser::container::archive::read_entry(&bytes, "meta").ok()?;
-    sniff_version(&meta)
-}
-
-/// HoI4 → Stellaris: write the Earth empire as a local Stellaris mod and, if a campaign is
-/// open, record the transition (bridge history + Stellaris as the current game in 2200).
+/// HoI4 → Stellaris: add Earth's empire to the player's own Stellaris empire designs (shown on
+/// the selection screen, no mod needed) and, if a campaign is open, record the transition.
 #[tauri::command]
 fn stellaris_create_mod(
     state: State<'_, AppState>,
@@ -467,22 +461,16 @@ fn stellaris_create_mod(
     }
     let row = relock(&state.db).installations().map_err(err)?.into_iter().find(|x| x.game_key == "stellaris");
     let save_dir = row.as_ref().and_then(|x| x.save_path.clone()).ok_or("stellaris_save_folder_unknown")?;
-    let install = row.as_ref().and_then(|x| x.install_path.clone()).map(PathBuf::from);
-    let exts = state.registry.game("stellaris").map(|g| g.save_extensions.clone()).unwrap_or_default();
-    let mod_root = chronicle_bridge::mod_root_from_save_dir(std::path::Path::new(&save_dir));
-    std::fs::create_dir_all(&mod_root).map_err(err)?;
-    let opts = chronicle_bridge::ModOptions {
-        empire_name: if empire_name.trim().is_empty() { chronicle_bridge::suggested_name(&r.design).0 } else { empire_name.trim().to_string() },
-        adjective: if adjective.trim().is_empty() { "Terran".into() } else { adjective.trim().to_string() },
-        game_version: stellaris_version(std::path::Path::new(&save_dir), &exts),
-    };
-    let result = chronicle_bridge::write_mod(&mod_root, &r.design, chronicle_bridge::Vocabulary::builtin(), install.as_deref(), &opts)
+    let docs = chronicle_bridge::stellaris_docs_from_save_dir(std::path::Path::new(&save_dir));
+    let name = if empire_name.trim().is_empty() { chronicle_bridge::suggested_name(&r.design).0 } else { empire_name.trim().to_string() };
+    let adjective = if adjective.trim().is_empty() { "Terran".to_string() } else { adjective.trim().to_string() };
+    let result = chronicle_bridge::write_user_design(&docs, &r.design, chronicle_bridge::Vocabulary::builtin(), &name, &adjective)
         .map_err(err)?;
 
     let guard = relock(&state.campaign);
     let (events_added, campaign) = match guard.as_ref() {
         Some(db) => {
-            let n = write_bridge_history(db, &r)?;
+            let n = chronicle_transition::write_bridge_history(db, &r).map_err(err)?;
             db.set_current("stellaris", PartialDate::ymd(2200, 1, 1)).map_err(err)?;
             (Some(n), Some(db.summary().map_err(err)?))
         }
@@ -491,44 +479,6 @@ fn stellaris_create_mod(
     Ok(StellarisTransition { result, events_added, campaign })
 }
 
-fn empire_card(r: &chronicle_bridge::BridgeResult, uk: bool) -> String {
-    let v = chronicle_bridge::Vocabulary::builtin();
-    let d = &r.design;
-    let ethic_name = |e: &str| -> String {
-        let base = e.trim_start_matches("fanatic_");
-        let name = v.ethics.get(base).map(|x| x.name.clone()).unwrap_or_else(|| base.to_string());
-        if e.starts_with("fanatic_") { format!("Fanatic {name}") } else { name }
-    };
-    let (t_title, t_auth, t_eth, t_civ, t_org, t_hist, t_conf, t_how, t_note) = if uk {
-        ("Імперія Землі для Stellaris", "Влада", "Етика", "Цивіки", "Походження", "Історія (симуляція)",
-         "Впевненість", "Створіть цю імперію в конструкторі імперій Stellaris.",
-         "Ключі Stellaris ще не звірені з файлами гри; остаточну перевірку робить конструктор у грі.")
-    } else {
-        ("Earth empire for Stellaris", "Authority", "Ethics", "Civics", "Origin", "History (simulated)",
-         "Confidence", "Create this empire in the Stellaris empire designer.",
-         "Stellaris keys are not yet verified against the game files; the in-game designer is the final check.")
-    };
-    let mut out = format!("# {t_title}\n\nseed {}\n\n", r.seed);
-    out += &format!("- **{t_auth}:** {}\n", v.authorities.get(&d.authority).map(|a| a.name.as_str()).unwrap_or(&d.authority));
-    out += &format!("- **{t_eth}:** {}\n", d.ethics.iter().map(|e| ethic_name(e)).collect::<Vec<_>>().join(", "));
-    out += &format!(
-        "- **{t_civ}:** {}\n",
-        d.civics.iter().map(|c| v.civics.get(c).map(|x| x.name.clone()).unwrap_or_else(|| c.clone())).collect::<Vec<_>>().join(", ")
-    );
-    out += &format!("- **{t_org}:** {}\n\n", v.origins.get(&d.origin).map(|o| o.name.as_str()).unwrap_or(&d.origin));
-    out += &format!("## {t_conf}\n\n");
-    for dec in &d.decisions {
-        out += &format!("- {}: {:.0}% ({})\n", dec.part, dec.confidence * 100.0, dec.review_state);
-    }
-    out += &format!("\n## {t_hist}: {}–2200\n\n", r.start_year);
-    for e in &r.run.events {
-        out += &format!("- {}s: {}\n", e.year, e.kind.replace('_', " "));
-    }
-    out += &format!("\n{t_how}\n\n_{t_note}_\n");
-    out
-}
-
-/// Save the design as JSON (machine-readable) and Markdown (a card to follow in the game).
 #[tauri::command]
 fn bridge_export(
     civ: chronicle_bridge::CivilizationState,
@@ -649,6 +599,133 @@ async fn import_ck3_save(app: tauri::AppHandle, path: String) -> CmdResult<Ck3Im
     .map_err(err)?
 }
 
+#[derive(Serialize)]
+struct Hoi4Import {
+    report: chronicle_bridge::Hoi4ImportReport,
+    campaign: CampaignSummary,
+}
+
+/// Read a HoI4 text save and import it into the open campaign (countries, states, wars, snapshot).
+#[tauri::command]
+async fn import_hoi4_save(app: tauri::AppHandle, path: String) -> CmdResult<Hoi4Import> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let save = PathBuf::from(&path);
+        let world = chronicle_bridge::read_hoi4(&save).map_err(|e| match e {
+            chronicle_bridge::Hoi4Error::Binary => "hoi4_binary".to_string(),
+            other => other.to_string(),
+        })?;
+        let state = app.state::<AppState>();
+        let mut guard = relock(&state.campaign);
+        let db = guard.as_mut().ok_or("no_campaign")?;
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| chronicle_bridge::import_hoi4(db, &world, &save)));
+        let report = match outcome {
+            Ok(r) => r.map_err(err)?,
+            Err(_) => {
+                db.rollback_bulk();
+                return Err("internal error during import".to_string());
+            }
+        };
+        let campaign = db.summary().map_err(err)?;
+        Ok(Hoi4Import { report, campaign })
+    })
+    .await
+    .map_err(err)?
+}
+
+// ---------------------------------------------------------------- era transition
+
+fn transition_dirs(state: &AppState) -> Result<BTreeMap<String, chronicle_transition::GameDirs>, String> {
+    let rows = relock(&state.db).installations().map_err(err)?;
+    Ok(rows
+        .into_iter()
+        .map(|r| {
+            (
+                r.game_key.clone(),
+                chronicle_transition::GameDirs {
+                    save_dir: r.save_path.map(PathBuf::from),
+                    install_dir: r.install_path.map(PathBuf::from),
+                },
+            )
+        })
+        .collect())
+}
+
+/// "Recommended" / automatic modes: has the newest save reached the transition date?
+#[tauri::command]
+fn transition_readiness(state: State<'_, AppState>) -> CmdResult<chronicle_transition::Readiness> {
+    let dirs = transition_dirs(&state)?;
+    let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: Default::default() };
+    let guard = relock(&state.campaign);
+    let db = guard.as_ref().ok_or("no_campaign")?;
+    chronicle_transition::readiness(db, &ctx).map_err(err)
+}
+
+/// Steps 1–11: find + check the save, backup, final import, snapshot, history, semantics,
+/// GeoCore, coefficients, next world, preview. Each finished step is also sent as a
+/// "transition-step" event so the screen can show progress.
+#[tauri::command]
+async fn transition_prepare(
+    app: tauri::AppHandle,
+    save_path: Option<String>,
+    bridge: Option<chronicle_transition::BridgeParams>,
+) -> CmdResult<chronicle_transition::TransitionPlan> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let dirs = transition_dirs(&state)?;
+        let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: bridge.unwrap_or_default() };
+        let mut guard = relock(&state.campaign);
+        let db = guard.as_mut().ok_or("no_campaign")?;
+        let emitter = app.clone();
+        let mut on_step = |s: &chronicle_transition::Step| {
+            let _ = emitter.emit("transition-step", s);
+        };
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            chronicle_transition::prepare(db, &ctx, save_path.map(PathBuf::from), &mut on_step)
+        }));
+        let plan = match outcome {
+            Ok(r) => r.map_err(err)?,
+            Err(_) => {
+                db.rollback_bulk();
+                return Err("internal error during the transition".to_string());
+            }
+        };
+        *relock(&state.transition) = Some(plan.clone());
+        Ok(plan)
+    })
+    .await
+    .map_err(err)?
+}
+
+#[derive(Serialize)]
+struct TransitionDone {
+    plan: chronicle_transition::TransitionPlan,
+    campaign: CampaignSummary,
+}
+
+/// Steps 12–15 after the player confirmed the preview: generate, validate, close the era,
+/// make the next game current.
+#[tauri::command]
+async fn transition_generate(app: tauri::AppHandle) -> CmdResult<TransitionDone> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        let plan = relock(&state.transition).clone().ok_or("no_prepared_transition")?;
+        let dirs = transition_dirs(&state)?;
+        let ctx = chronicle_transition::Context { registry: &state.registry, dirs, bridge: plan.bridge.clone() };
+        let mut guard = relock(&state.campaign);
+        let db = guard.as_mut().ok_or("no_campaign")?;
+        let emitter = app.clone();
+        let mut on_step = |s: &chronicle_transition::Step| {
+            let _ = emitter.emit("transition-step", s);
+        };
+        let done = chronicle_transition::generate(db, &ctx, &plan, &mut on_step).map_err(err)?;
+        *relock(&state.transition) = None;
+        let campaign = db.summary().map_err(err)?;
+        Ok(TransitionDone { plan: done, campaign })
+    })
+    .await
+    .map_err(err)?
+}
+
 // ---------------------------------------------------------------- save inspection
 
 #[derive(Serialize)]
@@ -742,6 +819,7 @@ fn main() {
                 registry,
                 campaign: Mutex::new(campaign),
                 steam: Mutex::new(None),
+                transition: Mutex::new(None),
             });
             Ok(())
         })
@@ -781,7 +859,11 @@ fn main() {
             stellaris_read_empire,
             stellaris_create_mod,
             hoi4_read_world,
-            import_ck3_save
+            import_ck3_save,
+            import_hoi4_save,
+            transition_readiness,
+            transition_prepare,
+            transition_generate
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Chronicle");
